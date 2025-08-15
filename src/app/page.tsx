@@ -1,12 +1,14 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { ethers } from "ethers"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { Wallet, Copy, RefreshCw } from "lucide-react"
 
@@ -19,16 +21,17 @@ declare global {
 export default function Web3ERC721Interface() {
   const [account, setAccount] = useState<string>("")
   const [isConnected, setIsConnected] = useState(false)
-  const [contractAddress, setContractAddress] = useState("0x239993F94E2C20dD8568a40b6D45Df5c3375cf02")
+  const [contractAddress, setContractAddress] = useState("0xd452CE0985B9B11653A3B2c789B87ab5bA3428d4")
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<any>({})
+  const [selectedNetwork, setSelectedNetwork] = useState<"epicchain" | "sepolia">("sepolia")
 
 
   const [tokenIdMint, setTokenIdMint] = useState("")
   const [tokenIdTransfer, setTokenIdTransfer] = useState("")
   const [toAddress, setToAddress] = useState("")
-  const [toAddressMint, setToAddressMint] = useState("0xe7cbdd4E7fa9A11E60D6F5590aFD75265245B054")
-  const [fromAddress, setFromAddress] = useState("0xa63cce06Adc521ef91a2DB2153dD75d336Cd0004")
+  const [toAddressMint, setToAddressMint] = useState("")
+  const [fromAddress, setFromAddress] = useState("")
   
   // Approval fields
   const [tokenIdApprove, setTokenIdApprove] = useState("")
@@ -40,36 +43,81 @@ export default function Web3ERC721Interface() {
   // Approval check fields
   const [tokenIdApprovalCheck, setTokenIdApprovalCheck] = useState("")
 
-  // Required wallet addresses
-  const REQUIRED_MINT_WALLET = "0xB9d5c93ec9abA93180ddD00a628e8FAcc3103039"
-  const FANABLE_PROFILES_WALLET = "0xa63cce06Adc521ef91a2DB2153dD75d336Cd0004"
+  // Network configurations
+  const networks = {
+    epicchain: {
+      chainId: "0xB7", // 183 in hex
+      chainName: "Epic Chain",
+      nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+      rpcUrls: ["https://mainnet.ethernitychain.io/"],
+      blockExplorerUrls: ["https://explorer.epicchain.io"],
+      requiredMintWallet: "0xB9d5c93ec9abA93180ddD00a628e8FAcc3103039",
+      fanableProfilesWallet: "0xa63cce06Adc521ef91a2DB2153dD75d336Cd0004"
+    },
+    sepolia: {
+      chainId: "0xaa36a7", // 11155111 in hex
+      chainName: "Sepolia test network",
+      nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+      rpcUrls: ["https://sepolia.infura.io/v3/"],
+      blockExplorerUrls: ["https://sepolia.etherscan.io"],
+      requiredMintWallet: "0xAf555DcdC173023035306a12C89F3cCAF8e31a9d",
+      fanableProfilesWallet: "0xAf555DcdC173023035306a12C89F3cCAF8e31a9d"
+    }
+  }
+
+  const currentNetwork = networks[selectedNetwork]
 
   useEffect(() => {
     checkConnection()
-    addEpicchainNetwork()
+    addNetworks()
   }, [])
 
-  const addEpicchainNetwork = async () => {
+  useEffect(() => {
+    if (typeof window.ethereum !== "undefined") {
+      switchToNetwork(selectedNetwork)
+    }
+    // Update default addresses when network changes
+    setToAddressMint(currentNetwork.requiredMintWallet || "")
+    setFromAddress(currentNetwork.fanableProfilesWallet || "")
+  }, [selectedNetwork, currentNetwork])
+
+  const addNetworks = async () => {
     if (typeof window.ethereum !== "undefined") {
       try {
+        // Add Epic Chain network
         await window.ethereum.request({
           method: "wallet_addEthereumChain",
           params: [
             {
-              chainId: "0xB7", // 183 in hex
-              chainName: "Epic Chain",
-              nativeCurrency: {
-                name: "ETH",
-                symbol: "ETH",
-                decimals: 18,
-              },
-              rpcUrls: ["https://mainnet.ethernitychain.io/"],
-              blockExplorerUrls: ["https://explorer.epicchain.io"],
+              chainId: networks.epicchain.chainId,
+              chainName: networks.epicchain.chainName,
+              nativeCurrency: networks.epicchain.nativeCurrency,
+              rpcUrls: networks.epicchain.rpcUrls,
+              blockExplorerUrls: networks.epicchain.blockExplorerUrls,
             },
           ],
         })
       } catch (error) {
-        console.error("Error adding Epicchain network:", error)
+        console.error("Error adding Epic Chain network:", error)
+      }
+    }
+  }
+
+  const switchToNetwork = async (networkKey: "epicchain" | "sepolia") => {
+    if (typeof window.ethereum !== "undefined") {
+      try {
+        const network = networks[networkKey]
+        await window.ethereum.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: network.chainId }],
+        })
+      } catch (error: any) {
+        // If the network doesn't exist, add it
+        if (error.code === 4902 && networkKey === "epicchain") {
+          await addNetworks()
+        } else {
+          console.error(`Error switching to ${networkKey} network:`, error)
+        }
       }
     }
   }
@@ -119,14 +167,65 @@ export default function Web3ERC721Interface() {
       return
     }
 
+    // Input validation
+    if (functionName === "mint") {
+      if (!params[0] || !ethers.isAddress(params[0])) {
+        toast.error("Please enter a valid 'To Address' for minting")
+        return
+      }
+      if (!params[1] || isNaN(Number(params[1])) || Number(params[1]) < 0) {
+        toast.error("Please enter a valid Token ID (positive number)")
+        return
+      }
+    }
+
+    if (functionName === "transferFrom") {
+      if (!params[0] || !ethers.isAddress(params[0])) {
+        toast.error("Please enter a valid 'From Address'")
+        return
+      }
+      if (!params[1] || !ethers.isAddress(params[1])) {
+        toast.error("Please enter a valid 'To Address'")
+        return
+      }
+      if (!params[2] || isNaN(Number(params[2])) || Number(params[2]) < 0) {
+        toast.error("Please enter a valid Token ID (positive number)")
+        return
+      }
+    }
+
+    if (["approve", "ownerOf", "getApproved"].includes(functionName)) {
+      const tokenId = functionName === "approve" ? params[1] : params[0]
+      if (!tokenId || isNaN(Number(tokenId)) || Number(tokenId) < 0) {
+        toast.error("Please enter a valid Token ID (positive number)")
+        return
+      }
+      if (functionName === "approve" && (!params[0] || !ethers.isAddress(params[0]))) {
+        toast.error("Please enter a valid address to approve")
+        return
+      }
+    }
+
     // Validate wallet for mint function
     if (functionName === "mint" && !isValidMintWallet()) {
-      toast.error(`Minting requires connection to wallet: ${REQUIRED_MINT_WALLET}`)
-      return
+      const requiredWallet = currentNetwork.requiredMintWallet
+      if (requiredWallet) {
+        toast.error(`Minting requires connection to wallet: ${requiredWallet}`)
+        return
+      }
     }
 
     try {
       setLoading(true)
+
+      // Pre-validation for operations that require existing tokens
+      if (["transferFrom", "approve", "getApproved"].includes(functionName)) {
+        const tokenId = functionName === "transferFrom" ? params[2] : params[0]
+        const tokenExists = await checkTokenExists(tokenId)
+        if (!tokenExists) {
+          throw new Error(`Token #${tokenId} does not exist. This token has not been minted yet.`)
+        }
+      }
 
       const erc721ABI = [
         "function mint(address to, uint256 tokenId)",
@@ -139,7 +238,6 @@ export default function Web3ERC721Interface() {
       ]
 
       // Create contract interface
-      const { ethers } = await import("ethers")
       const provider = new ethers.BrowserProvider(window.ethereum)
       const signer = await provider.getSigner()
       const contract = new ethers.Contract(contractAddress, erc721ABI, signer)
@@ -181,7 +279,14 @@ export default function Web3ERC721Interface() {
       toast.success(`${functionName} executed successfully`)
     } catch (error: any) {
       console.error(`Error calling ${functionName}:`, error)
-      toast.error(error.message || `Failed to call ${functionName}`)
+      const userFriendlyError = parseContractError(error, functionName, params)
+      toast.error(userFriendlyError)
+      
+      // Store the error in results for debugging
+      setResults((prev: any) => ({ 
+        ...prev, 
+        [functionName]: `❌ Error: ${userFriendlyError}` 
+      }))
     } finally {
       setLoading(false)
     }
@@ -192,8 +297,99 @@ export default function Web3ERC721Interface() {
     toast.success("Text copied to clipboard")
   }
 
+  const parseContractError = (error: any, functionName: string, params?: any[]): string => {
+    const errorMessage = error.message || error.toString()
+    
+    // Check for specific error patterns
+    if (errorMessage.includes("execution reverted")) {
+      const customErrorCode = error.data || ""
+      
+      // Common ERC721 error scenarios
+      switch (functionName) {
+        case "ownerOf":
+          if (customErrorCode.includes("0x7e273289")) {
+            return `Token #${params?.[0] || 'N/A'} does not exist. This token has not been minted yet.`
+          }
+          return `Token #${params?.[0] || 'N/A'} does not exist or query failed.`
+          
+        case "transferFrom":
+          if (customErrorCode.includes("0x7e273289")) {
+            return `Token #${params?.[2] || 'N/A'} does not exist. Cannot transfer a token that hasn't been minted.`
+          }
+          if (errorMessage.includes("insufficient allowance") || errorMessage.includes("not approved")) {
+            return `Transfer failed: You don't have permission to transfer token #${params?.[2] || 'N/A'}. The token owner must approve you first.`
+          }
+          if (errorMessage.includes("not owner")) {
+            return `Transfer failed: ${params?.[0] || 'Address'} does not own token #${params?.[2] || 'N/A'}.`
+          }
+          return `Transfer failed: Token #${params?.[2] || 'N/A'} cannot be transferred. Check ownership and approvals.`
+          
+        case "approve":
+          if (customErrorCode.includes("0x7e273289")) {
+            return `Token #${params?.[1] || 'N/A'} does not exist. Cannot approve a token that hasn't been minted.`
+          }
+          if (errorMessage.includes("not owner")) {
+            return `Approval failed: You are not the owner of token #${params?.[1] || 'N/A'}.`
+          }
+          return `Approval failed for token #${params?.[1] || 'N/A'}. You may not be the owner.`
+          
+        case "mint":
+          if (errorMessage.includes("already minted") || errorMessage.includes("exists")) {
+            return `Minting failed: Token #${params?.[1] || 'N/A'} already exists. Choose a different token ID.`
+          }
+          if (errorMessage.includes("unauthorized") || errorMessage.includes("access")) {
+            return `Minting failed: You don't have permission to mint tokens. Check if you're using the correct wallet.`
+          }
+          return `Minting failed: Token #${params?.[1] || 'N/A'} could not be created. Check permissions and token ID.`
+          
+        case "getApproved":
+          if (customErrorCode.includes("0x7e273289")) {
+            return `Token #${params?.[0] || 'N/A'} does not exist. Cannot check approvals for unminted tokens.`
+          }
+          return `Could not check approval for token #${params?.[0] || 'N/A'}. Token may not exist.`
+          
+        default:
+          return `Transaction failed: ${errorMessage}`
+      }
+    }
+    
+    // Network-related errors
+    if (errorMessage.includes("wrong network") || errorMessage.includes("chain")) {
+      return `Network Error: Please switch to ${currentNetwork.chainName} network in your wallet.`
+    }
+    
+    if (errorMessage.includes("user rejected") || errorMessage.includes("denied")) {
+      return "Transaction cancelled: User rejected the transaction in wallet."
+    }
+    
+    if (errorMessage.includes("insufficient funds")) {
+      return "Insufficient funds: You don't have enough ETH to pay for gas fees."
+    }
+    
+    // Contract not found
+    if (errorMessage.includes("ENS name not configured") || errorMessage.includes("could not detect network")) {
+      return "Contract Error: Could not connect to contract. Please check the contract address and network."
+    }
+    
+    // Fallback to original error
+    return errorMessage.length > 200 ? errorMessage.substring(0, 200) + "..." : errorMessage
+  }
+
   const isValidMintWallet = () => {
-    return true
+    const requiredWallet = currentNetwork.requiredMintWallet
+    if (!requiredWallet) return true // No restriction for this network
+    return account.toLowerCase() === requiredWallet.toLowerCase()
+  }
+
+  const checkTokenExists = async (tokenId: string): Promise<boolean> => {
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum)
+      const contract = new ethers.Contract(contractAddress, ["function ownerOf(uint256 tokenId) view returns (address)"], provider)
+      await contract.ownerOf(tokenId)
+      return true
+    } catch {
+      return false
+    }
   }
 
   return (
@@ -208,31 +404,43 @@ export default function Web3ERC721Interface() {
           {/* Network Info */}
           <Card className="h-fit">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Network Information</CardTitle>
+              <CardTitle className="text-lg">Network Configuration</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Select Network</Label>
+                <Select value={selectedNetwork} onValueChange={(value: "epicchain" | "sepolia") => setSelectedNetwork(value)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sepolia">Sepolia Testnet</SelectItem>
+                    <SelectItem value="epicchain">Epic Chain</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
                   <p className="font-medium">Network:</p>
-                  <p className="text-muted-foreground">Epic Chain</p>
+                  <p className="text-muted-foreground">{currentNetwork.chainName}</p>
                 </div>
                 <div>
                   <p className="font-medium">Chain ID:</p>
-                  <p className="text-muted-foreground">183</p>
+                  <p className="text-muted-foreground">{parseInt(currentNetwork.chainId, 16)}</p>
                 </div>
                 <div>
                   <p className="font-medium">Currency:</p>
-                  <p className="text-muted-foreground">ETH</p>
+                  <p className="text-muted-foreground">{currentNetwork.nativeCurrency.symbol}</p>
                 </div>
                 <div>
                   <p className="font-medium">Explorer:</p>
                   <a
-                    href="https://explorer.epicchain.io"
+                    href={currentNetwork.blockExplorerUrls[0]}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-500 hover:underline text-xs"
                   >
-                    explorer.epicchain.io
+                    {currentNetwork.blockExplorerUrls[0].replace('https://', '')}
                   </a>
                 </div>
               </div>
@@ -286,7 +494,7 @@ export default function Web3ERC721Interface() {
           <Card className="h-fit">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg">Contract Configuration</CardTitle>
-              <CardDescription className="text-sm">ERC721 contract on Epicchain</CardDescription>
+              <CardDescription className="text-sm">ERC721 contract on {currentNetwork.chainName}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
@@ -310,12 +518,23 @@ export default function Web3ERC721Interface() {
               <Alert>
                 <AlertDescription className="text-sm">
                   <strong>Wallet Requirements:</strong><br/>
-                  <strong>Minting:</strong> Must be connected with {REQUIRED_MINT_WALLET}<br/>
-                  <strong>Transfers:</strong> From address defaults to Fanable Profiles wallet ({FANABLE_PROFILES_WALLET})
+                  {currentNetwork.requiredMintWallet && (
+                    <>
+                      <strong>Minting:</strong> Must be connected with {currentNetwork.requiredMintWallet}<br/>
+                    </>
+                  )}
+                  {currentNetwork.fanableProfilesWallet && (
+                    <>
+                      <strong>Transfers:</strong> From address defaults to Fanable Profiles wallet ({currentNetwork.fanableProfilesWallet})
+                    </>
+                  )}
+                  {!currentNetwork.requiredMintWallet && !currentNetwork.fanableProfilesWallet && (
+                    <span>No wallet restrictions for {currentNetwork.chainName}</span>
+                  )}
                 </AlertDescription>
               </Alert>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                 {/* Mint Function */}
                 <Card className="border-2">
                   <CardHeader>
@@ -327,7 +546,6 @@ export default function Web3ERC721Interface() {
                         <Label className="text-sm font-medium">To Address</Label>
                         <Input
                           placeholder="0x..."
-                          disabled
                           value={toAddressMint}
                           onChange={(e) => setToAddressMint(e.target.value)}
                           className="font-mono"
@@ -347,6 +565,18 @@ export default function Web3ERC721Interface() {
                         {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
                         {isValidMintWallet() ? "Mint NFT" : "Mint NFT (Unauthorized Wallet)"}
                       </Button>
+                      
+                      {results.mint && (
+                        <div className="mt-4 p-3 bg-muted rounded-md">
+                          <div className="flex items-center justify-between mb-2">
+                            <Badge variant="outline" className="text-xs">Result</Badge>
+                            <Button variant="ghost" size="sm" onClick={() => copyToClipboard(String(results.mint))}>
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <code className="text-xs break-all block">{String(results.mint)}</code>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -363,7 +593,7 @@ export default function Web3ERC721Interface() {
                         <Input
                           placeholder="0x..."
                           value={fromAddress}
-                          disabled
+                          disabled={selectedNetwork === "epicchain"}
                           onChange={(e) => setFromAddress(e.target.value)}
                           className="font-mono"
                         />
@@ -390,6 +620,18 @@ export default function Web3ERC721Interface() {
                         {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
                         Transfer NFT
                       </Button>
+                      
+                      {results.transferFrom && (
+                        <div className="mt-4 p-3 bg-muted rounded-md">
+                          <div className="flex items-center justify-between mb-2">
+                            <Badge variant="outline" className="text-xs">Result</Badge>
+                            <Button variant="ghost" size="sm" onClick={() => copyToClipboard(String(results.transferFrom))}>
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <code className="text-xs break-all block">{String(results.transferFrom)}</code>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -423,6 +665,18 @@ export default function Web3ERC721Interface() {
                         {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
                         Approve NFT
                       </Button>
+                      
+                      {results.approve && (
+                        <div className="mt-4 p-3 bg-muted rounded-md">
+                          <div className="flex items-center justify-between mb-2">
+                            <Badge variant="outline" className="text-xs">Result</Badge>
+                            <Button variant="ghost" size="sm" onClick={() => copyToClipboard(String(results.approve))}>
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <code className="text-xs break-all block">{String(results.approve)}</code>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -447,6 +701,18 @@ export default function Web3ERC721Interface() {
                         {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
                         Check Owner
                       </Button>
+                      
+                      {results.ownerOf && (
+                        <div className="mt-4 p-3 bg-muted rounded-md">
+                          <div className="flex items-center justify-between mb-2">
+                            <Badge variant="outline" className="text-xs">Result</Badge>
+                            <Button variant="ghost" size="sm" onClick={() => copyToClipboard(String(results.ownerOf))}>
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <code className="text-xs break-all block">{String(results.ownerOf)}</code>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -471,35 +737,21 @@ export default function Web3ERC721Interface() {
                         {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
                         Check Approved
                       </Button>
+                      
+                      {results.getApproved && (
+                        <div className="mt-4 p-3 bg-muted rounded-md">
+                          <div className="flex items-center justify-between mb-2">
+                            <Badge variant="outline" className="text-xs">Result</Badge>
+                            <Button variant="ghost" size="sm" onClick={() => copyToClipboard(String(results.getApproved))}>
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <code className="text-xs break-all block">{String(results.getApproved)}</code>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Results */}
-        {Object.keys(results).length > 0 && (
-          <Card className="w-full">
-            <CardHeader>
-              <CardTitle>Transaction Results</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {Object.entries(results).map(([functionName, result]) => (
-                  <div key={functionName} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Badge variant="outline">{functionName}</Badge>
-                      <Button variant="ghost" size="sm" onClick={() => copyToClipboard(String(result))}>
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    <div className="p-3 bg-muted rounded-md">
-                      <code className="text-sm break-all">{String(result)}</code>
-                    </div>
-                  </div>
-                ))}
               </div>
             </CardContent>
           </Card>
