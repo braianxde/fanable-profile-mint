@@ -24,8 +24,8 @@ export default function Web3ERC721Interface() {
   const [results, setResults] = useState<any>({})
 
 
-  const [tokenId, setTokenId] = useState("")
-  
+  const [tokenIdMint, setTokenIdMint] = useState("")
+  const [tokenIdTransfer, setTokenIdTransfer] = useState("")
   const [toAddress, setToAddress] = useState("")
   const [toAddressMint, setToAddressMint] = useState("0xe7cbdd4E7fa9A11E60D6F5590aFD75265245B054")
   const [fromAddress, setFromAddress] = useState("0xa63cce06Adc521ef91a2DB2153dD75d336Cd0004")
@@ -121,6 +121,11 @@ export default function Web3ERC721Interface() {
       const erc721ABI = [
         "function mint(address to, uint256 tokenId)",
         "function transferFrom(address from, address to, uint256 tokenId)",
+        "function approve(address to, uint256 tokenId)",
+        "function getApproved(uint256 tokenId) view returns (address)",
+        "function isApprovedForAll(address owner, address operator) view returns (bool)",
+        "function ownerOf(uint256 tokenId) view returns (address)",
+        "function setApprovalForAll(address operator, bool approved)"
       ]
 
       // Create contract interface
@@ -139,10 +144,43 @@ export default function Web3ERC721Interface() {
           result = `Transaction confirmed: ${mintTx.hash}`
           break
         case "transferFrom":
+          // Verify token ownership
+          const tokenOwner = await contract.ownerOf(params[2])
+          if (tokenOwner.toLowerCase() !== params[0].toLowerCase()) {
+            throw new Error(`Token ${params[2]} is not owned by ${params[0]}. Current owner: ${tokenOwner}`)
+          }
+
+          // Check if the current account is approved to transfer this token
+          const currentAccount = await signer.getAddress()
+          const approvedAddress = await contract.getApproved(params[2])
+          const isApprovedForAll = await contract.isApprovedForAll(params[0], currentAccount)
+          
+          if (
+            currentAccount.toLowerCase() !== params[0].toLowerCase() && 
+            approvedAddress.toLowerCase() !== currentAccount.toLowerCase() &&
+            !isApprovedForAll
+          ) {
+            throw new Error(`Account ${currentAccount} is not approved to transfer token ${params[2]}. Please approve first or use the token owner's account.`)
+          }
+
+          // Estimate gas before sending transaction
+          try {
+            const gasEstimate = await contract.transferFrom.estimateGas(params[0], params[1], params[2])
+            console.log("Gas estimate for transferFrom:", gasEstimate.toString())
+          } catch (gasError: any) {
+            throw new Error(`Gas estimation failed: ${gasError.message}. This usually means the transaction would fail.`)
+          }
+
           const transferTx = await contract.transferFrom(params[0], params[1], params[2])
           result = `Transaction sent: ${transferTx.hash}`
           await transferTx.wait()
           result = `Transaction confirmed: ${transferTx.hash}`
+          break
+        case "approve":
+          const approveTx = await contract.approve(params[0], params[1])
+          result = `Approval transaction sent: ${approveTx.hash}`
+          await approveTx.wait()
+          result = `Approval confirmed: ${approveTx.hash}`
           break
         default:
           throw new Error(`Unknown function: ${functionName}`)
@@ -306,11 +344,11 @@ export default function Web3ERC721Interface() {
                       </div>
                       <div>
                         <Label className="text-sm font-medium">Token ID</Label>
-                        <Input placeholder="1" value={tokenId} onChange={(e) => setTokenId(e.target.value)} />
+                        <Input placeholder="1" value={tokenIdMint} onChange={(e) => setTokenIdMint(e.target.value)} />
                       </div>
                       <Button
-                        onClick={() => callContractFunction("mint", [toAddressMint, tokenId])}
-                        disabled={loading || !toAddressMint || !tokenId || !isValidMintWallet()}
+                        onClick={() => callContractFunction("mint", [toAddressMint, tokenIdMint])}
+                        disabled={loading || !toAddressMint || !tokenIdMint || !isValidMintWallet()}
                         className="w-full h-12 text-lg"
                         size="lg"
                         variant={isValidMintWallet() ? "default" : "secondary"}
@@ -350,11 +388,11 @@ export default function Web3ERC721Interface() {
                       </div>
                       <div>
                         <Label className="text-sm font-medium">Token ID</Label>
-                        <Input placeholder="1" value={tokenId} onChange={(e) => setTokenId(e.target.value)} />
+                        <Input placeholder="1" value={tokenIdTransfer} onChange={(e) => setTokenIdTransfer(e.target.value)} />
                       </div>
                       <Button
-                        onClick={() => callContractFunction("transferFrom", [fromAddress, toAddress, tokenId])}
-                        disabled={loading || !fromAddress || !toAddress || !tokenId}
+                        onClick={() => callContractFunction("transferFrom", [fromAddress, toAddress, tokenIdTransfer])}
+                        disabled={loading || !fromAddress || !toAddress || !tokenIdTransfer}
                         className="w-full h-12 text-lg"
                         size="lg"
                       >
