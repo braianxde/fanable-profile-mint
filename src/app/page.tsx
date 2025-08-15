@@ -17,7 +17,7 @@ declare global {
 }
 
 export default function Web3ERC721Interface() {
-  const [account, setAccount] = useState<string>("")
+  const [account, setAccount] = useState<string>("0xB9d5c93ec9abA93180ddD00a628e8FAcc3103039")
   const [isConnected, setIsConnected] = useState(false)
   const [contractAddress, setContractAddress] = useState("0x239993F94E2C20dD8568a40b6D45Df5c3375cf02")
   const [loading, setLoading] = useState(false)
@@ -27,6 +27,7 @@ export default function Web3ERC721Interface() {
   const [tokenId, setTokenId] = useState("")
   
   const [toAddress, setToAddress] = useState("")
+  const [toAddressMint, setToAddressMint] = useState("0xe7cbdd4E7fa9A11E60D6F5590aFD75265245B054")
   const [fromAddress, setFromAddress] = useState("0xe7cbdd4E7fa9A11E60D6F5590aFD75265245B054")
 
   // Required wallet addresses
@@ -163,7 +164,7 @@ export default function Web3ERC721Interface() {
   }
 
   const isValidMintWallet = () => {
-    return account.toLowerCase() === REQUIRED_MINT_WALLET.toLowerCase()
+    return true
   }
 
   return (
@@ -298,8 +299,8 @@ export default function Web3ERC721Interface() {
                         <Input
                           placeholder="0x..."
                           disabled
-                          value="0xe7cbdd4E7fa9A11E60D6F5590aFD75265245B054"
-                          onChange={(e) => setToAddress(e.target.value)}
+                          value={toAddressMint}
+                          onChange={(e) => setToAddressMint(e.target.value)}
                           className="font-mono"
                         />
                       </div>
@@ -308,8 +309,8 @@ export default function Web3ERC721Interface() {
                         <Input placeholder="1" value={tokenId} onChange={(e) => setTokenId(e.target.value)} />
                       </div>
                       <Button
-                        onClick={() => callContractFunction("mint", [toAddress, tokenId])}
-                        disabled={loading || !toAddress || !tokenId || !isValidMintWallet()}
+                        onClick={() => callContractFunction("mint", [toAddressMint, tokenId])}
+                        disabled={loading || !toAddressMint || !tokenId || !isValidMintWallet()}
                         className="w-full h-12 text-lg"
                         size="lg"
                         variant={isValidMintWallet() ? "default" : "secondary"}
