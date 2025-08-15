@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { useToast } from "@/hooks/use-toast"
+import { toast } from "sonner"
 import { Wallet, Copy, RefreshCw } from "lucide-react"
 
 declare global {
@@ -22,7 +22,7 @@ export default function Web3ERC721Interface() {
   const [contractAddress, setContractAddress] = useState("0x239993F94E2C20dD8568a40b6D45Df5c3375cf02")
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<any>({})
-  const { toast } = useToast()
+
 
   const [tokenId, setTokenId] = useState("")
   
@@ -84,25 +84,14 @@ export default function Web3ERC721Interface() {
         const accounts = await window.ethereum.request({ method: "eth_requestAccounts" })
         setAccount(accounts[0])
         setIsConnected(true)
-        toast({
-          title: "Wallet Connected",
-          description: `Connected to ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`,
-        })
+        toast.success(`Connected to ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`)
       } catch (error: any) {
-        toast({
-          title: "Connection Failed",
-          description: error.message,
-          variant: "destructive",
-        })
+        toast.error(error.message)
       } finally {
         setLoading(false)
       }
     } else {
-      toast({
-        title: "MetaMask Not Found",
-        description: "Please install MetaMask to use this application",
-        variant: "destructive",
-      })
+      toast.error("Please install MetaMask to use this application")
     }
   }
 
@@ -110,29 +99,18 @@ export default function Web3ERC721Interface() {
     setAccount("")
     setIsConnected(false)
     setResults({})
-    toast({
-      title: "Wallet Disconnected",
-      description: "Successfully disconnected from wallet",
-    })
+    toast.success("Successfully disconnected from wallet")
   }
 
   const callContractFunction = async (functionName: string, params: any[] = []) => {
     if (!contractAddress) {
-      toast({
-        title: "Contract Address Required",
-        description: "Please enter a valid ERC721 contract address",
-        variant: "destructive",
-      })
+      toast.error("Please enter a valid ERC721 contract address")
       return
     }
 
     // Validate wallet for mint function
     if (functionName === "mint" && !isValidMintWallet()) {
-      toast({
-        title: "Invalid Wallet for Minting",
-        description: `Minting requires connection to wallet: ${REQUIRED_MINT_WALLET}`,
-        variant: "destructive",
-      })
+      toast.error(`Minting requires connection to wallet: ${REQUIRED_MINT_WALLET}`)
       return
     }
 
@@ -170,17 +148,10 @@ export default function Web3ERC721Interface() {
       }
 
       setResults((prev: any) => ({ ...prev, [functionName]: result }))
-      toast({
-        title: "Success",
-        description: `${functionName} executed successfully`,
-      })
+      toast.success(`${functionName} executed successfully`)
     } catch (error: any) {
       console.error(`Error calling ${functionName}:`, error)
-      toast({
-        title: "Error",
-        description: error.message || `Failed to call ${functionName}`,
-        variant: "destructive",
-      })
+      toast.error(error.message || `Failed to call ${functionName}`)
     } finally {
       setLoading(false)
     }
@@ -188,10 +159,7 @@ export default function Web3ERC721Interface() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
-    toast({
-      title: "Copied",
-      description: "Text copied to clipboard",
-    })
+    toast.success("Text copied to clipboard")
   }
 
   const isValidMintWallet = () => {
