@@ -29,6 +29,16 @@ export default function Web3ERC721Interface() {
   const [toAddress, setToAddress] = useState("")
   const [toAddressMint, setToAddressMint] = useState("0xe7cbdd4E7fa9A11E60D6F5590aFD75265245B054")
   const [fromAddress, setFromAddress] = useState("0xa63cce06Adc521ef91a2DB2153dD75d336Cd0004")
+  
+  // Approval fields
+  const [tokenIdApprove, setTokenIdApprove] = useState("")
+  const [approveToAddress, setApproveToAddress] = useState("")
+  
+  // Ownership check fields
+  const [tokenIdOwnership, setTokenIdOwnership] = useState("")
+  
+  // Approval check fields
+  const [tokenIdApprovalCheck, setTokenIdApprovalCheck] = useState("")
 
   // Required wallet addresses
   const REQUIRED_MINT_WALLET = "0xB9d5c93ec9abA93180ddD00a628e8FAcc3103039"
@@ -148,6 +158,20 @@ export default function Web3ERC721Interface() {
           result = `Transaction sent: ${transferTx.hash}`
           await transferTx.wait()
           result = `Transaction confirmed: ${transferTx.hash}`
+          break
+        case "approve":
+          const approveTx = await contract.approve(params[0], params[1])
+          result = `Transaction sent: ${approveTx.hash}`
+          await approveTx.wait()
+          result = `Transaction confirmed: ${approveTx.hash}`
+          break
+        case "ownerOf":
+          const owner = await contract.ownerOf(params[0])
+          result = `Owner: ${owner}`
+          break
+        case "getApproved":
+          const approved = await contract.getApproved(params[0])
+          result = `Approved: ${approved}`
           break
         default:
           throw new Error(`Unknown function: ${functionName}`)
@@ -365,6 +389,87 @@ export default function Web3ERC721Interface() {
                       >
                         {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
                         Transfer NFT
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Approve Function */}
+                <Card className="border-2">
+                  <CardHeader>
+                    <CardTitle className="text-xl text-orange-600">Approve Token</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-3">
+                      <div>
+                        <Label className="text-sm font-medium">Approve To Address</Label>
+                        <Input
+                          placeholder="0x..."
+                          value={approveToAddress}
+                          onChange={(e) => setApproveToAddress(e.target.value)}
+                          className="font-mono"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium">Token ID</Label>
+                        <Input placeholder="1" value={tokenIdApprove} onChange={(e) => setTokenIdApprove(e.target.value)} />
+                      </div>
+                      <Button
+                        onClick={() => callContractFunction("approve", [approveToAddress, tokenIdApprove])}
+                        disabled={loading || !approveToAddress || !tokenIdApprove}
+                        className="w-full h-12 text-lg"
+                        size="lg"
+                      >
+                        {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
+                        Approve NFT
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Check Ownership Function */}
+                <Card className="border-2">
+                  <CardHeader>
+                    <CardTitle className="text-xl text-purple-600">Check Ownership</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-3">
+                      <div>
+                        <Label className="text-sm font-medium">Token ID</Label>
+                        <Input placeholder="1" value={tokenIdOwnership} onChange={(e) => setTokenIdOwnership(e.target.value)} />
+                      </div>
+                      <Button
+                        onClick={() => callContractFunction("ownerOf", [tokenIdOwnership])}
+                        disabled={loading || !tokenIdOwnership}
+                        className="w-full h-12 text-lg"
+                        size="lg"
+                      >
+                        {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
+                        Check Owner
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Check Approval Function */}
+                <Card className="border-2">
+                  <CardHeader>
+                    <CardTitle className="text-xl text-cyan-600">Check Approval</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-3">
+                      <div>
+                        <Label className="text-sm font-medium">Token ID</Label>
+                        <Input placeholder="1" value={tokenIdApprovalCheck} onChange={(e) => setTokenIdApprovalCheck(e.target.value)} />
+                      </div>
+                      <Button
+                        onClick={() => callContractFunction("getApproved", [tokenIdApprovalCheck])}
+                        disabled={loading || !tokenIdApprovalCheck}
+                        className="w-full h-12 text-lg"
+                        size="lg"
+                      >
+                        {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
+                        Check Approved
                       </Button>
                     </div>
                   </CardContent>
