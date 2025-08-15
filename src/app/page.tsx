@@ -17,7 +17,7 @@ declare global {
 }
 
 export default function Web3ERC721Interface() {
-  const [account, setAccount] = useState<string>("0xB9d5c93ec9abA93180ddD00a628e8FAcc3103039")
+  const [account, setAccount] = useState<string>("")
   const [isConnected, setIsConnected] = useState(false)
   const [contractAddress, setContractAddress] = useState("0x239993F94E2C20dD8568a40b6D45Df5c3375cf02")
   const [loading, setLoading] = useState(false)
@@ -28,11 +28,11 @@ export default function Web3ERC721Interface() {
   
   const [toAddress, setToAddress] = useState("")
   const [toAddressMint, setToAddressMint] = useState("0xe7cbdd4E7fa9A11E60D6F5590aFD75265245B054")
-  const [fromAddress, setFromAddress] = useState("0xe7cbdd4E7fa9A11E60D6F5590aFD75265245B054")
+  const [fromAddress, setFromAddress] = useState("0xa63cce06Adc521ef91a2DB2153dD75d336Cd0004")
 
   // Required wallet addresses
   const REQUIRED_MINT_WALLET = "0xB9d5c93ec9abA93180ddD00a628e8FAcc3103039"
-  const FANABLE_PROFILES_WALLET = "0xe7cbdd4E7fa9A11E60D6F5590aFD75265245B054"
+  const FANABLE_PROFILES_WALLET = "0xa63cce06Adc521ef91a2DB2153dD75d336Cd0004"
 
   useEffect(() => {
     checkConnection()
