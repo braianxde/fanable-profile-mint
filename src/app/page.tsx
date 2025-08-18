@@ -8,14 +8,27 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+
 import { toast } from "sonner"
-import { Wallet, Copy, RefreshCw } from "lucide-react"
+import { Wallet, Copy, RefreshCw, History, Clock, CheckCircle, XCircle } from "lucide-react"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 declare global {
   interface Window {
     ethereum?: any
   }
+}
+
+interface Transaction {
+  id: string
+  type: "mint" | "transfer" | "approve" | "ownerOf" | "getApproved"
+  timestamp: number
+  contractAddress: string
+  parameters: any[]
+  status: "pending" | "success" | "failed"
+  hash?: string
+  result?: string
+  errorMessage?: string
 }
 
 export default function Web3ERC721Interface() {
@@ -24,8 +37,7 @@ export default function Web3ERC721Interface() {
   const [contractAddress, setContractAddress] = useState("0xd452CE0985B9B11653A3B2c789B87ab5bA3428d4")
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<any>({})
-  const [selectedNetwork, setSelectedNetwork] = useState<"epicchain" | "sepolia">("sepolia")
-
+  const [transactions, setTransactions] = useState<Transaction[]>([])
 
   const [tokenIdMint, setTokenIdMint] = useState("")
   const [tokenIdTransfer, setTokenIdTransfer] = useState("")
@@ -43,81 +55,91 @@ export default function Web3ERC721Interface() {
   // Approval check fields
   const [tokenIdApprovalCheck, setTokenIdApprovalCheck] = useState("")
 
-  // Network configurations
-  const networks = {
-    epicchain: {
-      chainId: "0xB7", // 183 in hex
-      chainName: "Epic Chain",
-      nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
-      rpcUrls: ["https://mainnet.ethernitychain.io/"],
-      blockExplorerUrls: ["https://explorer.epicchain.io"],
-      requiredMintWallet: "0xB9d5c93ec9abA93180ddD00a628e8FAcc3103039",
-      fanableProfilesWallet: "0xa63cce06Adc521ef91a2DB2153dD75d336Cd0004"
-    },
-    sepolia: {
-      chainId: "0xaa36a7", // 11155111 in hex
-      chainName: "Sepolia test network",
-      nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
-      rpcUrls: ["https://sepolia.infura.io/v3/"],
-      blockExplorerUrls: ["https://sepolia.etherscan.io"],
-      requiredMintWallet: "0xAf555DcdC173023035306a12C89F3cCAF8e31a9d",
-      fanableProfilesWallet: "0xAf555DcdC173023035306a12C89F3cCAF8e31a9d"
-    }
+  // Epic Chain network configuration
+  const epicChainNetwork = {
+    chainId: "0xB7", // 183 in hex
+    chainName: "Epic Chain",
+    nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+    rpcUrls: ["https://mainnet.ethernitychain.io/"],
+    blockExplorerUrls: ["https://explorer.epicchain.io"],
+    requiredMintWallet: "0xB9d5c93ec9abA93180ddD00a628e8FAcc3103039",
+    fanableProfilesWallet: "0xa63cce06Adc521ef91a2DB2153dD75d336Cd0004"
   }
-
-  const currentNetwork = networks[selectedNetwork]
 
   useEffect(() => {
     checkConnection()
-    addNetworks()
+    addEpicChainNetwork()
+    loadTransactionsFromStorage()
+    // Set default addresses for Epic Chain
+    setToAddressMint("0xe7cbdd4E7fa9A11E60D6F5590aFD75265245B054")
+    setFromAddress(epicChainNetwork.fanableProfilesWallet)
   }, [])
 
-  useEffect(() => {
-    if (typeof window.ethereum !== "undefined") {
-      switchToNetwork(selectedNetwork)
+  // localStorage utilities for transactions
+  const saveTransactionsToStorage = (transactions: Transaction[]) => {
+    try {
+      localStorage.setItem("erc721_transactions", JSON.stringify(transactions))
+    } catch (error) {
+      console.error("Error saving transactions to localStorage:", error)
     }
-    // Update default addresses when network changes
-    setToAddressMint(currentNetwork.requiredMintWallet || "")
-    setFromAddress(currentNetwork.fanableProfilesWallet || "")
-  }, [selectedNetwork, currentNetwork])
+  }
 
-  const addNetworks = async () => {
+  const loadTransactionsFromStorage = () => {
+    try {
+      const stored = localStorage.getItem("erc721_transactions")
+      if (stored) {
+        const parsedTransactions = JSON.parse(stored)
+        setTransactions(parsedTransactions)
+      }
+    } catch (error) {
+      console.error("Error loading transactions from localStorage:", error)
+      setTransactions([])
+    }
+  }
+
+  const addTransaction = (transaction: Omit<Transaction, "id" | "timestamp">) => {
+    const newTransaction: Transaction = {
+      ...transaction,
+      id: Date.now().toString(),
+      timestamp: Date.now()
+    }
+    const updatedTransactions = [newTransaction, ...transactions]
+    setTransactions(updatedTransactions)
+    saveTransactionsToStorage(updatedTransactions)
+    return newTransaction.id
+  }
+
+  const updateTransaction = (id: string, updates: Partial<Transaction>) => {
+    const updatedTransactions = transactions.map(tx => 
+      tx.id === id ? { ...tx, ...updates } : tx
+    )
+    setTransactions(updatedTransactions)
+    saveTransactionsToStorage(updatedTransactions)
+  }
+
+  const clearTransactionHistory = () => {
+    setTransactions([])
+    localStorage.removeItem("erc721_transactions")
+    toast.success("Transaction history cleared")
+  }
+
+  const addEpicChainNetwork = async () => {
     if (typeof window.ethereum !== "undefined") {
       try {
-        // Add Epic Chain network
         await window.ethereum.request({
           method: "wallet_addEthereumChain",
           params: [
             {
-              chainId: networks.epicchain.chainId,
-              chainName: networks.epicchain.chainName,
-              nativeCurrency: networks.epicchain.nativeCurrency,
-              rpcUrls: networks.epicchain.rpcUrls,
-              blockExplorerUrls: networks.epicchain.blockExplorerUrls,
+              chainId: epicChainNetwork.chainId,
+              chainName: epicChainNetwork.chainName,
+              nativeCurrency: epicChainNetwork.nativeCurrency,
+              rpcUrls: epicChainNetwork.rpcUrls,
+              blockExplorerUrls: epicChainNetwork.blockExplorerUrls,
             },
           ],
         })
       } catch (error) {
         console.error("Error adding Epic Chain network:", error)
-      }
-    }
-  }
-
-  const switchToNetwork = async (networkKey: "epicchain" | "sepolia") => {
-    if (typeof window.ethereum !== "undefined") {
-      try {
-        const network = networks[networkKey]
-        await window.ethereum.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId: network.chainId }],
-        })
-      } catch (error: any) {
-        // If the network doesn't exist, add it
-        if (error.code === 4902 && networkKey === "epicchain") {
-          await addNetworks()
-        } else {
-          console.error(`Error switching to ${networkKey} network:`, error)
-        }
       }
     }
   }
@@ -167,13 +189,23 @@ export default function Web3ERC721Interface() {
       return
     }
 
+    // Add transaction to history when starting
+    const transactionId = addTransaction({
+      type: functionName as any,
+      contractAddress,
+      parameters: params,
+      status: "pending"
+    })
+
     // Input validation
     if (functionName === "mint") {
       if (!params[0] || !ethers.isAddress(params[0])) {
+        updateTransaction(transactionId, { status: "failed", errorMessage: "Invalid 'To Address' for minting" })
         toast.error("Please enter a valid 'To Address' for minting")
         return
       }
       if (!params[1] || isNaN(Number(params[1])) || Number(params[1]) < 0) {
+        updateTransaction(transactionId, { status: "failed", errorMessage: "Invalid Token ID (must be positive number)" })
         toast.error("Please enter a valid Token ID (positive number)")
         return
       }
@@ -181,14 +213,17 @@ export default function Web3ERC721Interface() {
 
     if (functionName === "transferFrom") {
       if (!params[0] || !ethers.isAddress(params[0])) {
+        updateTransaction(transactionId, { status: "failed", errorMessage: "Invalid 'From Address'" })
         toast.error("Please enter a valid 'From Address'")
         return
       }
       if (!params[1] || !ethers.isAddress(params[1])) {
+        updateTransaction(transactionId, { status: "failed", errorMessage: "Invalid 'To Address'" })
         toast.error("Please enter a valid 'To Address'")
         return
       }
       if (!params[2] || isNaN(Number(params[2])) || Number(params[2]) < 0) {
+        updateTransaction(transactionId, { status: "failed", errorMessage: "Invalid Token ID (must be positive number)" })
         toast.error("Please enter a valid Token ID (positive number)")
         return
       }
@@ -197,10 +232,12 @@ export default function Web3ERC721Interface() {
     if (["approve", "ownerOf", "getApproved"].includes(functionName)) {
       const tokenId = functionName === "approve" ? params[1] : params[0]
       if (!tokenId || isNaN(Number(tokenId)) || Number(tokenId) < 0) {
+        updateTransaction(transactionId, { status: "failed", errorMessage: "Invalid Token ID (must be positive number)" })
         toast.error("Please enter a valid Token ID (positive number)")
         return
       }
       if (functionName === "approve" && (!params[0] || !ethers.isAddress(params[0]))) {
+        updateTransaction(transactionId, { status: "failed", errorMessage: "Invalid address to approve" })
         toast.error("Please enter a valid address to approve")
         return
       }
@@ -208,11 +245,9 @@ export default function Web3ERC721Interface() {
 
     // Validate wallet for mint function
     if (functionName === "mint" && !isValidMintWallet()) {
-      const requiredWallet = currentNetwork.requiredMintWallet
-      if (requiredWallet) {
-        toast.error(`Minting requires connection to wallet: ${requiredWallet}`)
-        return
-      }
+      updateTransaction(transactionId, { status: "failed", errorMessage: "Unauthorized wallet for minting" })
+      toast.error(`Minting requires connection to wallet: ${epicChainNetwork.requiredMintWallet}`)
+      return
     }
 
     try {
@@ -247,29 +282,37 @@ export default function Web3ERC721Interface() {
       switch (functionName) {
         case "mint":
           const mintTx = await contract.mint(params[0], params[1])
+          updateTransaction(transactionId, { hash: mintTx.hash })
           result = `Transaction sent: ${mintTx.hash}`
           await mintTx.wait()
           result = `Transaction confirmed: ${mintTx.hash}`
+          updateTransaction(transactionId, { status: "success", result })
           break
         case "transferFrom":
           const transferTx = await contract.transferFrom(params[0], params[1], params[2])
+          updateTransaction(transactionId, { hash: transferTx.hash })
           result = `Transaction sent: ${transferTx.hash}`
           await transferTx.wait()
           result = `Transaction confirmed: ${transferTx.hash}`
+          updateTransaction(transactionId, { status: "success", result })
           break
         case "approve":
           const approveTx = await contract.approve(params[0], params[1])
+          updateTransaction(transactionId, { hash: approveTx.hash })
           result = `Transaction sent: ${approveTx.hash}`
           await approveTx.wait()
           result = `Transaction confirmed: ${approveTx.hash}`
+          updateTransaction(transactionId, { status: "success", result })
           break
         case "ownerOf":
           const owner = await contract.ownerOf(params[0])
           result = `Owner: ${owner}`
+          updateTransaction(transactionId, { status: "success", result })
           break
         case "getApproved":
           const approved = await contract.getApproved(params[0])
           result = `Approved: ${approved}`
+          updateTransaction(transactionId, { status: "success", result })
           break
         default:
           throw new Error(`Unknown function: ${functionName}`)
@@ -280,6 +323,7 @@ export default function Web3ERC721Interface() {
     } catch (error: any) {
       console.error(`Error calling ${functionName}:`, error)
       const userFriendlyError = parseContractError(error, functionName, params)
+      updateTransaction(transactionId, { status: "failed", errorMessage: userFriendlyError })
       toast.error(userFriendlyError)
       
       // Store the error in results for debugging
@@ -355,7 +399,7 @@ export default function Web3ERC721Interface() {
     
     // Network-related errors
     if (errorMessage.includes("wrong network") || errorMessage.includes("chain")) {
-      return `Network Error: Please switch to ${currentNetwork.chainName} network in your wallet.`
+      return `Network Error: Please switch to ${epicChainNetwork.chainName} network in your wallet.`
     }
     
     if (errorMessage.includes("user rejected") || errorMessage.includes("denied")) {
@@ -376,9 +420,7 @@ export default function Web3ERC721Interface() {
   }
 
   const isValidMintWallet = () => {
-    const requiredWallet = currentNetwork.requiredMintWallet
-    if (!requiredWallet) return true // No restriction for this network
-    return account.toLowerCase() === requiredWallet.toLowerCase()
+    return account.toLowerCase() === epicChainNetwork.requiredMintWallet.toLowerCase()
   }
 
   const checkTokenExists = async (tokenId: string): Promise<boolean> => {
@@ -394,53 +436,36 @@ export default function Web3ERC721Interface() {
 
   return (
     <div className="min-h-screen bg-background p-4">
-      <div className="h-full max-w-none space-y-4">
-        {/* Header */}
-        <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold">Fanable Minting</h1>
-        </div>
-
+      <div className="h-full max-w-none space-y-3">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Network Info */}
           <Card className="h-fit">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Network Configuration</CardTitle>
+            <CardHeader>
+              <CardTitle className="text-lg">Network Information</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Select Network</Label>
-                <Select value={selectedNetwork} onValueChange={(value: "epicchain" | "sepolia") => setSelectedNetwork(value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="sepolia">Sepolia Testnet</SelectItem>
-                    <SelectItem value="epicchain">Epic Chain</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <CardContent className="space-y-1">
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
                   <p className="font-medium">Network:</p>
-                  <p className="text-muted-foreground">{currentNetwork.chainName}</p>
+                  <p className="text-muted-foreground">{epicChainNetwork.chainName}</p>
                 </div>
                 <div>
                   <p className="font-medium">Chain ID:</p>
-                  <p className="text-muted-foreground">{parseInt(currentNetwork.chainId, 16)}</p>
+                  <p className="text-muted-foreground">{parseInt(epicChainNetwork.chainId, 16)}</p>
                 </div>
                 <div>
                   <p className="font-medium">Currency:</p>
-                  <p className="text-muted-foreground">{currentNetwork.nativeCurrency.symbol}</p>
+                  <p className="text-muted-foreground">{epicChainNetwork.nativeCurrency.symbol}</p>
                 </div>
                 <div>
                   <p className="font-medium">Explorer:</p>
                   <a
-                    href={currentNetwork.blockExplorerUrls[0]}
+                    href={epicChainNetwork.blockExplorerUrls[0]}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-500 hover:underline text-xs"
                   >
-                    {currentNetwork.blockExplorerUrls[0].replace('https://', '')}
+                    {epicChainNetwork.blockExplorerUrls[0].replace('https://', '')}
                   </a>
                 </div>
               </div>
@@ -448,22 +473,22 @@ export default function Web3ERC721Interface() {
           </Card>
 
           {/* Wallet Connection */}
-          <Card className="h-fit">
-            <CardHeader className="pb-3">
+          <Card className="h-fit flex">
+            <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Wallet className="h-4 w-4" />
                 Wallet Connection
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-1">
               {!isConnected ? (
                 <Button onClick={connectWallet} disabled={loading} className="w-full">
                   {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
                   Connect Wallet
                 </Button>
               ) : (
-                <div className="space-y-3">
-                  <div className="space-y-2">
+                <div className="space-y-1">
+                  <div className="space-y-1">
                     <p className="text-sm font-medium">Connected Account</p>
                     <div className="flex items-center gap-2">
                       <Badge variant="secondary" className="font-mono text-xs">
@@ -492,12 +517,12 @@ export default function Web3ERC721Interface() {
 
           {/* Contract Address */}
           <Card className="h-fit">
-            <CardHeader className="pb-3">
+            <CardHeader>
               <CardTitle className="text-lg">Contract Configuration</CardTitle>
-              <CardDescription className="text-sm">ERC721 contract on {currentNetwork.chainName}</CardDescription>
+              <CardDescription className="text-sm">ERC721 contract on {epicChainNetwork.chainName}</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
+              <div className="space-y-1">
                 <Label htmlFor="contract-address" className="text-sm">
                   Contract Address
                 </Label>
@@ -518,19 +543,8 @@ export default function Web3ERC721Interface() {
               <Alert>
                 <AlertDescription className="text-sm">
                   <strong>Wallet Requirements:</strong><br/>
-                  {currentNetwork.requiredMintWallet && (
-                    <>
-                      <strong>Minting:</strong> Must be connected with {currentNetwork.requiredMintWallet}<br/>
-                    </>
-                  )}
-                  {currentNetwork.fanableProfilesWallet && (
-                    <>
-                      <strong>Transfers:</strong> From address defaults to Fanable Profiles wallet ({currentNetwork.fanableProfilesWallet})
-                    </>
-                  )}
-                  {!currentNetwork.requiredMintWallet && !currentNetwork.fanableProfilesWallet && (
-                    <span>No wallet restrictions for {currentNetwork.chainName}</span>
-                  )}
+                  <strong>Minting:</strong> Must be connected with {epicChainNetwork.requiredMintWallet}<br/>
+                  <strong>Transfers:</strong> From address defaults to Fanable Profiles wallet ({epicChainNetwork.fanableProfilesWallet})
                 </AlertDescription>
               </Alert>
 
@@ -546,6 +560,7 @@ export default function Web3ERC721Interface() {
                         <Label className="text-sm font-medium">To Address</Label>
                         <Input
                           placeholder="0x..."
+                          disabled
                           value={toAddressMint}
                           onChange={(e) => setToAddressMint(e.target.value)}
                           className="font-mono"
@@ -593,7 +608,7 @@ export default function Web3ERC721Interface() {
                         <Input
                           placeholder="0x..."
                           value={fromAddress}
-                          disabled={selectedNetwork === "epicchain"}
+                          disabled
                           onChange={(e) => setFromAddress(e.target.value)}
                           className="font-mono"
                         />
@@ -756,6 +771,165 @@ export default function Web3ERC721Interface() {
             </CardContent>
           </Card>
         )}
+
+        {/* Transaction History */}
+        <Card className="w-full">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <History className="h-5 w-5" />
+                <CardTitle className="text-xl">Transaction History</CardTitle>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">{transactions.length} transactions</Badge>
+                {transactions.length > 0 && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={clearTransactionHistory}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    Clear History
+                  </Button>
+                )}
+              </div>
+            </div>
+            <CardDescription>
+              All transactions are stored locally in your browser
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {transactions.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <History className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No transactions yet</p>
+                <p className="text-sm">Your transaction history will appear here</p>
+              </div>
+            ) : (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[100px]">Status</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Parameters</TableHead>
+                      <TableHead>Hash/Result</TableHead>
+                      <TableHead className="w-[50px]">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {transactions.map((tx) => (
+                      <TableRow key={tx.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {tx.status === "pending" && (
+                              <>
+                                <Clock className="h-4 w-4 text-yellow-500 animate-pulse" />
+                                <Badge variant="secondary">Pending</Badge>
+                              </>
+                            )}
+                            {tx.status === "success" && (
+                              <>
+                                <CheckCircle className="h-4 w-4 text-green-500" />
+                                <Badge variant="default" className="bg-green-100 text-green-800">Success</Badge>
+                              </>
+                            )}
+                            {tx.status === "failed" && (
+                              <>
+                                <XCircle className="h-4 w-4 text-red-500" />
+                                <Badge variant="destructive">Failed</Badge>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="font-mono">
+                            {tx.type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {new Date(tx.timestamp).toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            {tx.parameters.map((param, index) => (
+                              <div key={index} className="text-sm font-mono">
+                                <span className="text-muted-foreground">#{index}:</span>{" "}
+                                <span className="break-all">
+                                  {typeof param === "string" && param.length > 20 
+                                    ? `${param.slice(0, 10)}...${param.slice(-6)}`
+                                    : String(param)
+                                  }
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            {tx.hash && (
+                              <div className="text-sm">
+                                <span className="text-muted-foreground">Hash:</span>{" "}
+                                <code className="font-mono bg-muted px-1 rounded">
+                                  {tx.hash.slice(0, 10)}...{tx.hash.slice(-6)}
+                                </code>
+                              </div>
+                            )}
+                            {tx.result && (
+                              <div className="text-sm">
+                                <span className="text-muted-foreground">Result:</span>{" "}
+                                <span className="break-all">
+                                  {tx.result.length > 50 
+                                    ? `${tx.result.slice(0, 50)}...`
+                                    : tx.result
+                                  }
+                                </span>
+                              </div>
+                            )}
+                            {tx.errorMessage && (
+                              <div className="text-sm text-red-600">
+                                <span className="text-muted-foreground">Error:</span>{" "}
+                                <span className="break-all">
+                                  {tx.errorMessage.length > 50 
+                                    ? `${tx.errorMessage.slice(0, 50)}...`
+                                    : tx.errorMessage
+                                  }
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => {
+                              const details = {
+                                id: tx.id,
+                                type: tx.type,
+                                timestamp: new Date(tx.timestamp).toISOString(),
+                                contractAddress: tx.contractAddress,
+                                parameters: tx.parameters,
+                                status: tx.status,
+                                hash: tx.hash,
+                                result: tx.result,
+                                errorMessage: tx.errorMessage
+                              }
+                              copyToClipboard(JSON.stringify(details, null, 2))
+                            }}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   )
