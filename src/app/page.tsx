@@ -249,10 +249,13 @@ export default function Web3ERC721Interface() {
         toast.error("Please enter a valid 'To Address'")
         return
       }
-      if (!params[2] || isNaN(Number(params[2])) || Number(params[2]) < 0) {
-        toast.error("Please enter a valid Token ID (positive number)")
+      const tokenId = Number(params[2])
+      if (!params[2] || isNaN(tokenId) || tokenId < 0 || !Number.isInteger(tokenId)) {
+        toast.error("Please enter a valid Token ID (positive integer)")
         return
       }
+      // Convert token ID to number for contract call
+      params[2] = tokenId
     }
 
     if (["approve", "ownerOf", "getApproved"].includes(functionName)) {
@@ -410,13 +413,32 @@ export default function Web3ERC721Interface() {
     
     // Handle CALL_EXCEPTION errors (common when token doesn't exist)
     if (error.code === "CALL_EXCEPTION" || errorMessage.includes("CALL_EXCEPTION")) {
-      const tokenId = params?.[0] || params?.[1] || params?.[2]
+      let tokenId
+      if (functionName === "transferFrom") {
+        tokenId = params?.[2] // Token ID is the 3rd parameter for transferFrom
+      } else if (functionName === "mint") {
+        tokenId = params?.[1] // Token ID is the 2nd parameter for mint
+      } else if (functionName === "approve") {
+        tokenId = params?.[1] // Token ID is the 2nd parameter for approve
+      } else {
+        tokenId = params?.[0] // Token ID is the 1st parameter for other functions
+      }
       return `Token #${tokenId || 'N/A'} does not exist`
     }
     
     // Handle ethers v6 BAD_DATA errors (empty return values)
     if (error.code === "BAD_DATA" || errorMessage.includes("could not decode result data")) {
-      return `Token #${params?.[0] || params?.[2] || 'N/A'} does not exist.`
+      let tokenId
+      if (functionName === "transferFrom") {
+        tokenId = params?.[2] // Token ID is the 3rd parameter for transferFrom
+      } else if (functionName === "mint") {
+        tokenId = params?.[1] // Token ID is the 2nd parameter for mint
+      } else if (functionName === "approve") {
+        tokenId = params?.[1] // Token ID is the 2nd parameter for approve
+      } else {
+        tokenId = params?.[0] // Token ID is the 1st parameter for other functions
+      }
+      return `Token #${tokenId || 'N/A'} does not exist.`
     }
     
     // Check for specific error patterns
@@ -425,19 +447,55 @@ export default function Web3ERC721Interface() {
       
       // Handle specific error scenarios
       if (customErrorCode.includes("0x7e273289")) {
-        return `Token #${params?.[0] || params?.[1] || params?.[2] || 'N/A'} does not exist.`
+        let tokenId
+        if (functionName === "transferFrom") {
+          tokenId = params?.[2] // Token ID is the 3rd parameter for transferFrom
+        } else if (functionName === "mint") {
+          tokenId = params?.[1] // Token ID is the 2nd parameter for mint
+        } else if (functionName === "approve") {
+          tokenId = params?.[1] // Token ID is the 2nd parameter for approve
+        } else {
+          tokenId = params?.[0] // Token ID is the 1st parameter for other functions
+        }
+        return `Token #${tokenId || 'N/A'} does not exist.`
       }
       
       if (errorMessage.includes("insufficient allowance") || errorMessage.includes("not approved")) {
-        return `Transfer failed: Not approved for token #${params?.[2] || 'N/A'}.`
+        let tokenId
+        if (functionName === "transferFrom") {
+          tokenId = params?.[2] // Token ID is the 3rd parameter for transferFrom
+        } else if (functionName === "mint") {
+          tokenId = params?.[1] // Token ID is the 2nd parameter for mint
+        } else if (functionName === "approve") {
+          tokenId = params?.[1] // Token ID is the 2nd parameter for approve
+        } else {
+          tokenId = params?.[0] // Token ID is the 1st parameter for other functions
+        }
+        return `Transfer failed: Not approved for token #${tokenId || 'N/A'}.`
       }
       
       if (errorMessage.includes("not owner")) {
-        return `Failed: Not owner of token #${params?.[1] || params?.[2] || 'N/A'}.`
+        let tokenId
+        if (functionName === "transferFrom") {
+          tokenId = params?.[2] // Token ID is the 3rd parameter for transferFrom
+        } else if (functionName === "mint") {
+          tokenId = params?.[1] // Token ID is the 2nd parameter for mint
+        } else if (functionName === "approve") {
+          tokenId = params?.[1] // Token ID is the 2nd parameter for approve
+        } else {
+          tokenId = params?.[0] // Token ID is the 2nd parameter for other functions
+        }
+        return `Failed: Not owner of token #${tokenId || 'N/A'}.`
       }
       
       if (errorMessage.includes("already minted") || errorMessage.includes("exists")) {
-        return `Token #${params?.[1] || 'N/A'} already exists.`
+        let tokenId
+        if (functionName === "mint") {
+          tokenId = params?.[1] // Token ID is the 2nd parameter for mint
+        } else {
+          tokenId = params?.[0] // Token ID is the 1st parameter for other functions
+        }
+        return `Token #${tokenId || 'N/A'} already exists.`
       }
       
       if (errorMessage.includes("unauthorized") || errorMessage.includes("access")) {
