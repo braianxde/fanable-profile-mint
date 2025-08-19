@@ -34,7 +34,7 @@ interface Transaction {
 export default function Web3ERC721Interface() {
   const [account, setAccount] = useState<string>("")
   const [isConnected, setIsConnected] = useState(false)
-  const [contractAddress, setContractAddress] = useState("0xd452CE0985B9B11653A3B2c789B87ab5bA3428d4")
+  const [contractAddress, setContractAddress] = useState("0x239993F94E2C20dD8568a40b6D45Df5c3375cf02")
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<any>({})
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -67,18 +67,44 @@ export default function Web3ERC721Interface() {
   }
 
   useEffect(() => {
+    console.log("useEffect running - loading transactions")
     checkConnection()
     addEpicChainNetwork()
     loadTransactionsFromStorage()
     // Set default addresses for Epic Chain
     setToAddressMint("0xe7cbdd4E7fa9A11E60D6F5590aFD75265245B054")
     setFromAddress(epicChainNetwork.fanableProfilesWallet)
-  }, [])
+  }, []) // Empty dependency array - should only run once
+
+  // Monitor transactions state changes
+  useEffect(() => {
+    console.log("Transactions state changed:", transactions.length)
+  }, [transactions])
+
+  // Check localStorage integrity periodically
+  useEffect(() => {
+    const checkLocalStorage = () => {
+      const stored = localStorage.getItem("erc721_transactions")
+      if (stored && transactions.length === 0) {
+        console.warn("localStorage has data but transactions state is empty - reloading")
+        loadTransactionsFromStorage()
+      }
+    }
+    
+    const interval = setInterval(checkLocalStorage, 2000) // Check every 2 seconds
+    return () => clearInterval(interval)
+  }, [transactions.length])
 
   // localStorage utilities for transactions
   const saveTransactionsToStorage = (transactions: Transaction[]) => {
     try {
-      localStorage.setItem("erc721_transactions", JSON.stringify(transactions))
+      console.log("Saving transactions to storage:", transactions.length)
+      if (transactions.length > 0) {
+        localStorage.setItem("erc721_transactions", JSON.stringify(transactions))
+        console.log("Successfully saved to localStorage")
+      } else {
+        console.log("No transactions to save")
+      }
     } catch (error) {
       console.error("Error saving transactions to localStorage:", error)
     }
@@ -87,9 +113,19 @@ export default function Web3ERC721Interface() {
   const loadTransactionsFromStorage = () => {
     try {
       const stored = localStorage.getItem("erc721_transactions")
+      console.log("Raw localStorage value:", stored ? stored.substring(0, 100) + "..." : "null")
       if (stored) {
         const parsedTransactions = JSON.parse(stored)
-        setTransactions(parsedTransactions)
+        console.log("Loading transactions from storage:", parsedTransactions.length)
+        if (Array.isArray(parsedTransactions)) {
+          setTransactions(parsedTransactions)
+        } else {
+          console.error("Stored transactions is not an array:", typeof parsedTransactions)
+          setTransactions([])
+        }
+      } else {
+        console.log("No stored transactions found")
+        setTransactions([])
       }
     } catch (error) {
       console.error("Error loading transactions from localStorage:", error)
@@ -104,6 +140,7 @@ export default function Web3ERC721Interface() {
       timestamp: Date.now()
     }
     const updatedTransactions = [newTransaction, ...transactions]
+    console.log("Adding transaction, total count:", updatedTransactions.length)
     setTransactions(updatedTransactions)
     saveTransactionsToStorage(updatedTransactions)
     return newTransaction.id
@@ -113,11 +150,13 @@ export default function Web3ERC721Interface() {
     const updatedTransactions = transactions.map(tx => 
       tx.id === id ? { ...tx, ...updates } : tx
     )
+    console.log("Updating transaction", id, "total count:", updatedTransactions.length)
     setTransactions(updatedTransactions)
     saveTransactionsToStorage(updatedTransactions)
   }
 
   const clearTransactionHistory = () => {
+    console.log("Clearing transaction history manually")
     setTransactions([])
     localStorage.removeItem("erc721_transactions")
     toast.success("Transaction history cleared")
@@ -189,23 +228,13 @@ export default function Web3ERC721Interface() {
       return
     }
 
-    // Add transaction to history when starting
-    const transactionId = addTransaction({
-      type: functionName as any,
-      contractAddress,
-      parameters: params,
-      status: "pending"
-    })
-
     // Input validation
     if (functionName === "mint") {
       if (!params[0] || !ethers.isAddress(params[0])) {
-        updateTransaction(transactionId, { status: "failed", errorMessage: "Invalid 'To Address' for minting" })
         toast.error("Please enter a valid 'To Address' for minting")
         return
       }
       if (!params[1] || isNaN(Number(params[1])) || Number(params[1]) < 0) {
-        updateTransaction(transactionId, { status: "failed", errorMessage: "Invalid Token ID (must be positive number)" })
         toast.error("Please enter a valid Token ID (positive number)")
         return
       }
@@ -213,17 +242,14 @@ export default function Web3ERC721Interface() {
 
     if (functionName === "transferFrom") {
       if (!params[0] || !ethers.isAddress(params[0])) {
-        updateTransaction(transactionId, { status: "failed", errorMessage: "Invalid 'From Address'" })
         toast.error("Please enter a valid 'From Address'")
         return
       }
       if (!params[1] || !ethers.isAddress(params[1])) {
-        updateTransaction(transactionId, { status: "failed", errorMessage: "Invalid 'To Address'" })
         toast.error("Please enter a valid 'To Address'")
         return
       }
       if (!params[2] || isNaN(Number(params[2])) || Number(params[2]) < 0) {
-        updateTransaction(transactionId, { status: "failed", errorMessage: "Invalid Token ID (must be positive number)" })
         toast.error("Please enter a valid Token ID (positive number)")
         return
       }
@@ -232,12 +258,10 @@ export default function Web3ERC721Interface() {
     if (["approve", "ownerOf", "getApproved"].includes(functionName)) {
       const tokenId = functionName === "approve" ? params[1] : params[0]
       if (!tokenId || isNaN(Number(tokenId)) || Number(tokenId) < 0) {
-        updateTransaction(transactionId, { status: "failed", errorMessage: "Invalid Token ID (must be positive number)" })
         toast.error("Please enter a valid Token ID (positive number)")
         return
       }
       if (functionName === "approve" && (!params[0] || !ethers.isAddress(params[0]))) {
-        updateTransaction(transactionId, { status: "failed", errorMessage: "Invalid address to approve" })
         toast.error("Please enter a valid address to approve")
         return
       }
@@ -245,7 +269,6 @@ export default function Web3ERC721Interface() {
 
     // Validate wallet for mint function
     if (functionName === "mint" && !isValidMintWallet()) {
-      updateTransaction(transactionId, { status: "failed", errorMessage: "Unauthorized wallet for minting" })
       toast.error(`Minting requires connection to wallet: ${epicChainNetwork.requiredMintWallet}`)
       return
     }
@@ -258,7 +281,16 @@ export default function Web3ERC721Interface() {
         const tokenId = functionName === "transferFrom" ? params[2] : params[0]
         const tokenExists = await checkTokenExists(tokenId)
         if (!tokenExists) {
-          throw new Error(`Token #${tokenId} does not exist. This token has not been minted yet.`)
+          // Check if token was burned before throwing generic error
+          try {
+            const burnResult = await checkTokenWasBurned(tokenId)
+            if (burnResult.wasBurned && burnResult.burnTxHash) {
+              throw new Error(`Burned:\n${burnResult.burnTxHash}`)
+            }
+          } catch (burnCheckError) {
+            console.warn("Could not check burn status:", burnCheckError)
+          }
+          throw new Error(`Token #${tokenId} does not exist`)
         }
       }
 
@@ -282,55 +314,79 @@ export default function Web3ERC721Interface() {
       switch (functionName) {
         case "mint":
           const mintTx = await contract.mint(params[0], params[1])
-          updateTransaction(transactionId, { hash: mintTx.hash })
-          result = `Transaction sent: ${mintTx.hash}`
+          result = mintTx.hash
           await mintTx.wait()
-          result = `Transaction confirmed: ${mintTx.hash}`
-          updateTransaction(transactionId, { status: "success", result })
+          result = mintTx.hash
           break
         case "transferFrom":
           const transferTx = await contract.transferFrom(params[0], params[1], params[2])
-          updateTransaction(transactionId, { hash: transferTx.hash })
-          result = `Transaction sent: ${transferTx.hash}`
+          
+          result = transferTx.hash
           await transferTx.wait()
-          result = `Transaction confirmed: ${transferTx.hash}`
-          updateTransaction(transactionId, { status: "success", result })
+          
+          result = transferTx.hash
           break
         case "approve":
           const approveTx = await contract.approve(params[0], params[1])
-          updateTransaction(transactionId, { hash: approveTx.hash })
-          result = `Transaction sent: ${approveTx.hash}`
+          result = approveTx.hash
           await approveTx.wait()
-          result = `Transaction confirmed: ${approveTx.hash}`
-          updateTransaction(transactionId, { status: "success", result })
+          result = approveTx.hash
           break
         case "ownerOf":
           const owner = await contract.ownerOf(params[0])
-          result = `Owner: ${owner}`
-          updateTransaction(transactionId, { status: "success", result })
+          
+          // Validate the returned owner address
+          if (!owner || owner === "0x") {
+            throw new Error(`Token #${params[0]} does not exist`)
+          }
+          
+          if (!ethers.isAddress(owner)) {
+            throw new Error(`Invalid owner address returned: ${owner}`)
+          }
+          
+          // Check if token has been burned (transferred to zero address)
+          if (owner === "0x0000000000000000000000000000000000000000") {
+            result = `Burned:\n${owner}`
+          } else {
+            result = owner
+          }
+          
           break
         case "getApproved":
           const approved = await contract.getApproved(params[0])
-          result = `Approved: ${approved}`
-          updateTransaction(transactionId, { status: "success", result })
+          result = approved
           break
         default:
           throw new Error(`Unknown function: ${functionName}`)
       }
 
+      // Only add successful transactions to history
+      addTransaction({
+        type: functionName as any,
+        contractAddress,
+        parameters: params,
+        status: "success",
+        result: result
+      })
+      
       setResults((prev: any) => ({ ...prev, [functionName]: result }))
       toast.success(`${functionName} executed successfully`)
     } catch (error: any) {
       console.error(`Error calling ${functionName}:`, error)
-      const userFriendlyError = parseContractError(error, functionName, params)
-      updateTransaction(transactionId, { status: "failed", errorMessage: userFriendlyError })
-      toast.error(userFriendlyError)
+      const userFriendlyError = await parseContractError(error, functionName, params)
       
-      // Store the error in results for debugging
-      setResults((prev: any) => ({ 
-        ...prev, 
-        [functionName]: `❌ Error: ${userFriendlyError}` 
-      }))
+      // Check if this is actually a burned token result (success case)
+      if (userFriendlyError.startsWith("Burned:")) {
+        setResults((prev: any) => ({ ...prev, [functionName]: userFriendlyError }))
+        toast.success(`${functionName} executed successfully`)
+      } else {
+        toast.error(userFriendlyError)
+        // Store the error in results for debugging
+        setResults((prev: any) => ({ 
+          ...prev, 
+          [functionName]: `❌ Error: ${userFriendlyError}` 
+        }))
+      }
     } finally {
       setLoading(false)
     }
@@ -341,60 +397,54 @@ export default function Web3ERC721Interface() {
     toast.success("Text copied to clipboard")
   }
 
-  const parseContractError = (error: any, functionName: string, params?: any[]): string => {
+  const parseContractError = async (error: any, functionName: string, params?: any[]): Promise<string> => {
+    console.log(error)
     const errorMessage = error.message || error.toString()
+    const errorData = error.data || ""
+    
+    // First check if this is a burned token
+    const burnedResult = await handleBurnedTokenError(error, functionName, params)
+    if (burnedResult) {
+      return burnedResult
+    }
+    
+    // Handle CALL_EXCEPTION errors (common when token doesn't exist)
+    if (error.code === "CALL_EXCEPTION" || errorMessage.includes("CALL_EXCEPTION")) {
+      const tokenId = params?.[0] || params?.[1] || params?.[2]
+      return `Token #${tokenId || 'N/A'} does not exist`
+    }
+    
+    // Handle ethers v6 BAD_DATA errors (empty return values)
+    if (error.code === "BAD_DATA" || errorMessage.includes("could not decode result data")) {
+      return `Token #${params?.[0] || params?.[2] || 'N/A'} does not exist.`
+    }
     
     // Check for specific error patterns
     if (errorMessage.includes("execution reverted")) {
       const customErrorCode = error.data || ""
       
-      // Common ERC721 error scenarios
-      switch (functionName) {
-        case "ownerOf":
-          if (customErrorCode.includes("0x7e273289")) {
-            return `Token #${params?.[0] || 'N/A'} does not exist. This token has not been minted yet.`
-          }
-          return `Token #${params?.[0] || 'N/A'} does not exist or query failed.`
-          
-        case "transferFrom":
-          if (customErrorCode.includes("0x7e273289")) {
-            return `Token #${params?.[2] || 'N/A'} does not exist. Cannot transfer a token that hasn't been minted.`
-          }
-          if (errorMessage.includes("insufficient allowance") || errorMessage.includes("not approved")) {
-            return `Transfer failed: You don't have permission to transfer token #${params?.[2] || 'N/A'}. The token owner must approve you first.`
-          }
-          if (errorMessage.includes("not owner")) {
-            return `Transfer failed: ${params?.[0] || 'Address'} does not own token #${params?.[2] || 'N/A'}.`
-          }
-          return `Transfer failed: Token #${params?.[2] || 'N/A'} cannot be transferred. Check ownership and approvals.`
-          
-        case "approve":
-          if (customErrorCode.includes("0x7e273289")) {
-            return `Token #${params?.[1] || 'N/A'} does not exist. Cannot approve a token that hasn't been minted.`
-          }
-          if (errorMessage.includes("not owner")) {
-            return `Approval failed: You are not the owner of token #${params?.[1] || 'N/A'}.`
-          }
-          return `Approval failed for token #${params?.[1] || 'N/A'}. You may not be the owner.`
-          
-        case "mint":
-          if (errorMessage.includes("already minted") || errorMessage.includes("exists")) {
-            return `Minting failed: Token #${params?.[1] || 'N/A'} already exists. Choose a different token ID.`
-          }
-          if (errorMessage.includes("unauthorized") || errorMessage.includes("access")) {
-            return `Minting failed: You don't have permission to mint tokens. Check if you're using the correct wallet.`
-          }
-          return `Minting failed: Token #${params?.[1] || 'N/A'} could not be created. Check permissions and token ID.`
-          
-        case "getApproved":
-          if (customErrorCode.includes("0x7e273289")) {
-            return `Token #${params?.[0] || 'N/A'} does not exist. Cannot check approvals for unminted tokens.`
-          }
-          return `Could not check approval for token #${params?.[0] || 'N/A'}. Token may not exist.`
-          
-        default:
-          return `Transaction failed: ${errorMessage}`
+      // Handle specific error scenarios
+      if (customErrorCode.includes("0x7e273289")) {
+        return `Token #${params?.[0] || params?.[1] || params?.[2] || 'N/A'} does not exist.`
       }
+      
+      if (errorMessage.includes("insufficient allowance") || errorMessage.includes("not approved")) {
+        return `Transfer failed: Not approved for token #${params?.[2] || 'N/A'}.`
+      }
+      
+      if (errorMessage.includes("not owner")) {
+        return `Failed: Not owner of token #${params?.[1] || params?.[2] || 'N/A'}.`
+      }
+      
+      if (errorMessage.includes("already minted") || errorMessage.includes("exists")) {
+        return `Token #${params?.[1] || 'N/A'} already exists.`
+      }
+      
+      if (errorMessage.includes("unauthorized") || errorMessage.includes("access")) {
+        return `Unauthorized: Check wallet permissions.`
+      }
+      
+      return `Transaction failed: ${errorMessage.substring(0, 100)}...`
     }
     
     // Network-related errors
@@ -423,13 +473,89 @@ export default function Web3ERC721Interface() {
     return account.toLowerCase() === epicChainNetwork.requiredMintWallet.toLowerCase()
   }
 
+  const checkTokenWasBurned = async (tokenId: string): Promise<{ wasBurned: boolean, burnTxHash?: string }> => {
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum)
+      const contract = new ethers.Contract(contractAddress, [
+        "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
+      ], provider)
+      
+      // Query Transfer events for this specific token
+      const filter = contract.filters.Transfer(null, null, tokenId)
+      const events = await contract.queryFilter(filter)
+      
+      if (events.length === 0) {
+        return { wasBurned: false } // No transfer events, token never existed
+      }
+      
+      // Check the last transfer event
+      const lastTransfer = events[events.length - 1] as any
+      const toAddress = lastTransfer.args?.to as string
+      
+      // Check if last transfer was to zero address (burn)
+      const wasBurned = toAddress === "0x0000000000000000000000000000000000000000"
+      
+      return { 
+        wasBurned, 
+        burnTxHash: wasBurned ? lastTransfer.transactionHash : undefined 
+      }
+    } catch (error: any) {
+      console.warn("Error checking transfer events:", error)
+      return { wasBurned: false }
+    }
+  }
+
+  const handleBurnedTokenError = async (error: any, functionName: string, params?: any[]): Promise<string | null> => {
+    // Only check for burned tokens on specific error codes and functions
+    if (error.code === "CALL_EXCEPTION" && error.data?.includes("0x7e273289")) {
+      const tokenId = params?.[0] || params?.[1] || params?.[2] // Different functions use different param positions
+      if (tokenId && ["ownerOf", "getApproved", "transferFrom", "approve"].includes(functionName)) {
+        try {
+          const burnResult = await checkTokenWasBurned(tokenId)
+          if (burnResult.wasBurned && burnResult.burnTxHash) {
+            return `Burned:\n${burnResult.burnTxHash}`
+          }
+        } catch (burnCheckError) {
+          console.warn("Could not check burn status:", burnCheckError)
+        }
+      }
+    }
+    return null // Not a burned token
+  }
+
   const checkTokenExists = async (tokenId: string): Promise<boolean> => {
     try {
       const provider = new ethers.BrowserProvider(window.ethereum)
       const contract = new ethers.Contract(contractAddress, ["function ownerOf(uint256 tokenId) view returns (address)"], provider)
-      await contract.ownerOf(tokenId)
-      return true
-    } catch {
+      const owner = await contract.ownerOf(tokenId)
+      
+      // Check if the returned value is a valid address (not empty)
+      // Note: Zero address (0x00...00) is valid for burned tokens
+      if (!owner || owner === "0x") {
+        return false
+      }
+      
+      return ethers.isAddress(owner)
+    } catch (error: any) {
+      // Handle specific ethers v6 BAD_DATA error
+      if (error.code === "BAD_DATA" || error.message?.includes("could not decode result data")) {
+        return false
+      }
+      
+      // Handle CALL_EXCEPTION errors (token doesn't exist)
+      if (error.code === "CALL_EXCEPTION" || error.message?.includes("CALL_EXCEPTION")) {
+        return false
+      }
+      
+      // Handle other contract errors that indicate token doesn't exist
+      if (error.message?.includes("execution reverted") || 
+          error.message?.includes("ERC721: invalid token ID") ||
+          error.message?.includes("ERC721NonexistentToken")) {
+        return false
+      }
+      
+      // Log unexpected errors for debugging
+      console.warn("Unexpected error in checkTokenExists:", error)
       return false
     }
   }
@@ -583,13 +709,48 @@ export default function Web3ERC721Interface() {
                       
                       {results.mint && (
                         <div className="mt-4 p-3 bg-muted rounded-md">
-                          <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center mb-2">
                             <Badge variant="outline" className="text-xs">Result</Badge>
-                            <Button variant="ghost" size="sm" onClick={() => copyToClipboard(String(results.mint))}>
-                              <Copy className="h-3 w-3" />
-                            </Button>
                           </div>
-                          <code className="text-xs break-all block">{String(results.mint)}</code>
+                          <div className="text-xs flex items-center gap-1">
+                            {(() => {
+                              const result = String(results.mint)
+                              
+                              // Don't create links for error messages
+                              if (result.startsWith("❌ Error:")) {
+                                return <pre className="break-all text-xs whitespace-pre-line font-mono text-red-600">{result}</pre>
+                              }
+                              
+                              // Regular transaction hash
+                              const txHashMatch = result.match(/^(0x[a-fA-F0-9]{64})$/)
+                              if (txHashMatch) {
+                                const txHash = txHashMatch[1]
+                                return (
+                                  <>
+                                    <a
+                                      href={`${epicChainNetwork.blockExplorerUrls[0]}/tx/${txHash}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-500 hover:underline font-mono break-all"
+                                    >
+                                      {txHash}
+                                    </a>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      className="h-4 w-4 p-0 flex-shrink-0"
+                                      onClick={() => copyToClipboard(txHash)}
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                    </Button>
+                                  </>
+                                )
+                              }
+                              
+                              // Fallback for other formats
+                              return <pre className="break-all text-xs whitespace-pre-line font-mono">{result}</pre>
+                            })()}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -638,13 +799,77 @@ export default function Web3ERC721Interface() {
                       
                       {results.transferFrom && (
                         <div className="mt-4 p-3 bg-muted rounded-md">
-                          <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center mb-2">
                             <Badge variant="outline" className="text-xs">Result</Badge>
-                            <Button variant="ghost" size="sm" onClick={() => copyToClipboard(String(results.transferFrom))}>
-                              <Copy className="h-3 w-3" />
-                            </Button>
                           </div>
-                          <code className="text-xs break-all block">{String(results.transferFrom)}</code>
+                          <div className="text-xs flex items-center gap-1">
+                            {(() => {
+                              const result = String(results.transferFrom)
+                              
+                              // Don't create links for error messages
+                              if (result.startsWith("❌ Error:")) {
+                                return <pre className="break-all text-xs whitespace-pre-line font-mono text-red-600">{result}</pre>
+                              }
+                              
+                              // Check for burned token format
+                              const burnedTxMatch = result.match(/^Burned:\n(0x[a-fA-F0-9]{64})/)
+                              if (burnedTxMatch) {
+                                const txHash = burnedTxMatch[1]
+                                return (
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-muted-foreground">Burned:</span>
+                                    <div className="flex items-center gap-1">
+                                      <a
+                                        href={`${epicChainNetwork.blockExplorerUrls[0]}/tx/${txHash}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-500 hover:underline font-mono break-all"
+                                      >
+                                        {txHash}
+                                      </a>
+                                      <Button 
+                                        variant="ghost" 
+                                        size="sm" 
+                                        className="h-4 w-4 p-0 flex-shrink-0"
+                                        onClick={() => copyToClipboard(txHash)}
+                                      >
+                                        <Copy className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                )
+                              }
+                              
+                              // Regular transaction hash
+                              const txHashMatch = result.match(/^(0x[a-fA-F0-9]{64})$/)
+                              if (txHashMatch) {
+                                const txHash = txHashMatch[1]
+                                return (
+                                  <>
+                                    <a
+                                      href={`${epicChainNetwork.blockExplorerUrls[0]}/tx/${txHash}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-500 hover:underline font-mono break-all"
+                                    >
+                                      {txHash}
+                                    </a>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      className="h-4 w-4 p-0 flex-shrink-0"
+                                      onClick={() => copyToClipboard(txHash)}
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                    </Button>
+                                  </>
+                                )
+                              }
+                              
+                              // Fallback for other formats
+                              return <pre className="break-all text-xs whitespace-pre-line font-mono">{result}</pre>
+                            })()}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -683,13 +908,77 @@ export default function Web3ERC721Interface() {
                       
                       {results.approve && (
                         <div className="mt-4 p-3 bg-muted rounded-md">
-                          <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center mb-2">
                             <Badge variant="outline" className="text-xs">Result</Badge>
-                            <Button variant="ghost" size="sm" onClick={() => copyToClipboard(String(results.approve))}>
-                              <Copy className="h-3 w-3" />
-                            </Button>
                           </div>
-                          <code className="text-xs break-all block">{String(results.approve)}</code>
+                          <div className="text-xs flex items-center gap-1">
+                            {(() => {
+                              const result = String(results.approve)
+                              
+                              // Don't create links for error messages
+                              if (result.startsWith("❌ Error:")) {
+                                return <pre className="break-all text-xs whitespace-pre-line font-mono text-red-600">{result}</pre>
+                              }
+                              
+                              // Check for burned token format
+                              const burnedTxMatch = result.match(/^Burned:\n(0x[a-fA-F0-9]{64})/)
+                              if (burnedTxMatch) {
+                                const txHash = burnedTxMatch[1]
+                                return (
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-muted-foreground">Burned:</span>
+                                    <div className="flex items-center gap-1">
+                                      <a
+                                        href={`${epicChainNetwork.blockExplorerUrls[0]}/tx/${txHash}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-500 hover:underline font-mono break-all"
+                                      >
+                                        {txHash}
+                                      </a>
+                                      <Button 
+                                        variant="ghost" 
+                                        size="sm" 
+                                        className="h-4 w-4 p-0 flex-shrink-0"
+                                        onClick={() => copyToClipboard(txHash)}
+                                      >
+                                        <Copy className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                )
+                              }
+                              
+                              // Regular transaction hash
+                              const txHashMatch = result.match(/^(0x[a-fA-F0-9]{64})$/)
+                              if (txHashMatch) {
+                                const txHash = txHashMatch[1]
+                                return (
+                                  <>
+                                    <a
+                                      href={`${epicChainNetwork.blockExplorerUrls[0]}/tx/${txHash}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-500 hover:underline font-mono break-all"
+                                    >
+                                      {txHash}
+                                    </a>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      className="h-4 w-4 p-0 flex-shrink-0"
+                                      onClick={() => copyToClipboard(txHash)}
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                    </Button>
+                                  </>
+                                )
+                              }
+                              
+                              // Fallback for other formats
+                              return <pre className="break-all text-xs whitespace-pre-line font-mono">{result}</pre>
+                            })()}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -719,13 +1008,120 @@ export default function Web3ERC721Interface() {
                       
                       {results.ownerOf && (
                         <div className="mt-4 p-3 bg-muted rounded-md">
-                          <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center mb-2">
                             <Badge variant="outline" className="text-xs">Result</Badge>
-                            <Button variant="ghost" size="sm" onClick={() => copyToClipboard(String(results.ownerOf))}>
-                              <Copy className="h-3 w-3" />
-                            </Button>
                           </div>
-                          <code className="text-xs break-all block">{String(results.ownerOf)}</code>
+                          <div className="text-xs flex items-center gap-1">
+                            {(() => {
+                              const result = String(results.ownerOf)
+                              const burnedTxMatch = result.match(/^Burned:\n(0x[a-fA-F0-9]{64})/)
+                              const burnedAddressMatch = result.match(/^Burned:\n(0x[a-fA-F0-9]{40})/)
+                              const addressMatch = result.match(/0x[a-fA-F0-9]{40}/)
+                              const txHashMatch = result.match(/0x[a-fA-F0-9]{64}/)
+                              
+                              if (burnedTxMatch) {
+                                // It's a burned token with tx hash
+                                const txHash = burnedTxMatch[1]
+                                return (
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-muted-foreground">Burned:</span>
+                                    <div className="flex items-center gap-1">
+                                      <a
+                                        href={`${epicChainNetwork.blockExplorerUrls[0]}/tx/${txHash}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-500 hover:underline font-mono break-all"
+                                      >
+                                        {txHash}
+                                      </a>
+                                      <Button 
+                                        variant="ghost" 
+                                        size="sm" 
+                                        className="h-4 w-4 p-0 flex-shrink-0"
+                                        onClick={() => copyToClipboard(txHash)}
+                                      >
+                                        <Copy className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                )
+                              } else if (burnedAddressMatch) {
+                                // It's a burned token with zero address
+                                const address = burnedAddressMatch[1]
+                                return (
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-muted-foreground">Burned:</span>
+                                    <div className="flex items-center gap-1">
+                                      <a
+                                        href={`${epicChainNetwork.blockExplorerUrls[0]}/address/${address}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-500 hover:underline font-mono break-all"
+                                      >
+                                        {address}
+                                      </a>
+                                      <Button 
+                                        variant="ghost" 
+                                        size="sm" 
+                                        className="h-4 w-4 p-0 flex-shrink-0"
+                                        onClick={() => copyToClipboard(address)}
+                                      >
+                                        <Copy className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                )
+                              } else if (txHashMatch) {
+                                // It's a transaction hash (without burned prefix)
+                                const txHash = txHashMatch[0]
+                                return (
+                                  <>
+                                    <a
+                                      href={`${epicChainNetwork.blockExplorerUrls[0]}/tx/${txHash}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-500 hover:underline font-mono break-all"
+                                    >
+                                      {txHash}
+                                    </a>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      className="h-4 w-4 p-0 flex-shrink-0"
+                                      onClick={() => copyToClipboard(txHash)}
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                    </Button>
+                                  </>
+                                )
+                              } else if (addressMatch) {
+                                // It's an address (regular owner)
+                                const address = addressMatch[0]
+                                return (
+                                  <>
+                                    <a
+                                      href={`${epicChainNetwork.blockExplorerUrls[0]}/address/${address}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-500 hover:underline font-mono break-all"
+                                    >
+                                      {address}
+                                    </a>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      className="h-4 w-4 p-0 flex-shrink-0"
+                                      onClick={() => copyToClipboard(address)}
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                    </Button>
+                                  </>
+                                )
+                              }
+                              
+                              return <pre className="break-all text-xs whitespace-pre-line font-mono">{result}</pre>
+                            })()}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -755,13 +1151,91 @@ export default function Web3ERC721Interface() {
                       
                       {results.getApproved && (
                         <div className="mt-4 p-3 bg-muted rounded-md">
-                          <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center mb-2">
                             <Badge variant="outline" className="text-xs">Result</Badge>
-                            <Button variant="ghost" size="sm" onClick={() => copyToClipboard(String(results.getApproved))}>
-                              <Copy className="h-3 w-3" />
-                            </Button>
                           </div>
-                          <code className="text-xs break-all block">{String(results.getApproved)}</code>
+                          <div className="text-xs flex items-center gap-1">
+                            {(() => {
+                              const result = String(results.getApproved)
+                              const burnedTxMatch = result.match(/^Burned: (0x[a-fA-F0-9]{64})/)
+                              const addressMatch = result.match(/0x[a-fA-F0-9]{40}/)
+                              const txHashMatch = result.match(/0x[a-fA-F0-9]{64}/)
+                              
+                              if (burnedTxMatch) {
+                                // It's a burned token with tx hash
+                                const txHash = burnedTxMatch[1]
+                                return (
+                                  <>
+                                    <span className="text-muted-foreground">Burned: </span>
+                                    <a
+                                      href={`${epicChainNetwork.blockExplorerUrls[0]}/tx/${txHash}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-500 hover:underline font-mono break-all"
+                                    >
+                                      {txHash}
+                                    </a>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      className="h-4 w-4 p-0 flex-shrink-0"
+                                      onClick={() => copyToClipboard(txHash)}
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                    </Button>
+                                  </>
+                                )
+                              } else if (txHashMatch) {
+                                // It's a transaction hash (without burned prefix)
+                                const txHash = txHashMatch[0]
+                                return (
+                                  <>
+                                    <a
+                                      href={`${epicChainNetwork.blockExplorerUrls[0]}/tx/${txHash}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-500 hover:underline font-mono break-all"
+                                    >
+                                      {txHash}
+                                    </a>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      className="h-4 w-4 p-0 flex-shrink-0"
+                                      onClick={() => copyToClipboard(txHash)}
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                    </Button>
+                                  </>
+                                )
+                              } else if (addressMatch) {
+                                // It's an address (regular approval)
+                                const address = addressMatch[0]
+                                return (
+                                  <>
+                                    <a
+                                      href={`${epicChainNetwork.blockExplorerUrls[0]}/address/${address}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-500 hover:underline font-mono break-all"
+                                    >
+                                      {address}
+                                    </a>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      className="h-4 w-4 p-0 flex-shrink-0"
+                                      onClick={() => copyToClipboard(address)}
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                    </Button>
+                                  </>
+                                )
+                              }
+                              
+                              return <pre className="break-all text-xs whitespace-pre-line font-mono">{result}</pre>
+                            })()}
+                          </div>
                         </div>
                       )}
                     </div>
