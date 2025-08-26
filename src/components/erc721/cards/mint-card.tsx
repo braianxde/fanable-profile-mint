@@ -10,7 +10,7 @@ import { RefreshCw, CheckCircle, AlertCircle, X } from "lucide-react"
 import { toast } from "sonner"
 
 interface MintCardProps {
-  onMint: (toAddress: string, tokenId: string) => Promise<void>
+  onMint: (toAddress: string, tokenId: string) => Promise<bigint | any>
   isLoading: boolean
   defaultToAddress?: string
 }
@@ -31,9 +31,21 @@ export function MintCard({ onMint, isLoading, defaultToAddress = "0xe7cbdd4E7fa9
       setError(null)
       setResult(null)
       
-      await onMint(toAddressMint, tokenIdMint)
-      setResult(`Successfully minted token #${tokenIdMint} to ${toAddressMint}`)
-      setTokenIdMint("")
+      const mintedTokenId = await onMint(toAddressMint, tokenIdMint)
+      
+      // Check if the result is an error
+      if (typeof mintedTokenId === 'object' && 'type' in mintedTokenId) {
+        // Error case
+        const errorMessage = mintedTokenId.message || "Minting failed"
+        setError(errorMessage)
+        toast.error(errorMessage)
+      } else {
+        // Success case - use the actual returned token ID
+        const actualTokenId = mintedTokenId?.toString() || tokenIdMint
+        setResult(`Successfully minted token #${actualTokenId} to ${toAddressMint}`)
+        toast.success(`Successfully minted token #${actualTokenId}!`)
+        setTokenIdMint("")
+      }
     } catch (error: any) {
       const errorMessage = error.message || "Minting failed"
       setError(errorMessage)

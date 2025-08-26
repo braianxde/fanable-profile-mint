@@ -40,6 +40,7 @@ export function Erc721Interface({ contractAddress, network, onTransactionComplet
       const tokenIdBigInt = BigInt(tokenId)
       const result = await mint(toAddress, tokenIdBigInt)
       onTransactionComplete("mint", `Token ID: ${result}`)
+      return result // Return the result to the MintCard
     } catch (error: any) {
       throw error
     }
