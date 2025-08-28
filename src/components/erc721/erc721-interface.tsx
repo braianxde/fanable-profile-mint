@@ -9,6 +9,7 @@ import {
   OwnershipCard, 
   ApprovalCheckCard 
 } from "./cards"
+import { useDynamicContext } from "@dynamic-labs/sdk-react-core"
 
 interface Erc721InterfaceProps {
   contractAddress: string
@@ -35,8 +36,16 @@ export function Erc721Interface({ contractAddress, network, onTransactionComplet
     txId
   } = useErc721({ address: contractAddress, network })
 
+  const { primaryWallet } = useDynamicContext()
+
   const handleMint = async (toAddress: string, tokenId: string) => {
     try {
+      if(primaryWallet?.address.toLowerCase() !== "0xb9d5c93ec9aba93180ddd00a628e8facc3103039") {
+        alert("Change the wallet to the 3039")
+        return
+      }
+
+      alert("Minting token")
       const tokenIdBigInt = BigInt(tokenId)
       const result = await mint(toAddress, tokenIdBigInt)
       onTransactionComplete("mint", `Token ID: ${result}`)
@@ -48,6 +57,11 @@ export function Erc721Interface({ contractAddress, network, onTransactionComplet
 
   const handleTransfer = async (fromAddress: string, toAddress: string, tokenId: string) => {
     try {
+      if(primaryWallet?.address.toLowerCase() !== "0xa63cce06adc521ef91a2db2153dd75d336cd0004") {
+        alert("Change the wallet to the 0004")
+        return
+      }
+
       const tokenIdBigInt = BigInt(tokenId)
       await transferFrom(fromAddress, toAddress, tokenIdBigInt)
       onTransactionComplete("transferFrom", `Transferred token #${tokenId}`)
