@@ -9,6 +9,7 @@ import { NetworkTypes } from "@/config/network.config"
 import { Erc721Interface } from "@/components/erc721/erc721-interface"
 import { TransactionHistory } from "@/components/erc721/transaction-history"
 import { ContractConfig } from "@/components/erc721/contract-config"
+import { EbayPurchaseHistory } from "@/components/ebay/ebay-purchase-history"
 
 interface Transaction {
   id: string
@@ -128,6 +129,9 @@ export default function Web3ERC721Interface() {
           onClearHistory={clearTransactionHistory}
           explorerUrl={epicChainNetwork.blockExplorerUrls[0]}
         />
+
+        {/* eBay Purchase History */}
+        <EbayPurchaseHistory />
       </div>
     </div>
   )
