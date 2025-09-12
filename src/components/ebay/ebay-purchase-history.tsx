@@ -270,7 +270,7 @@ export function EbayPurchaseHistory() {
   }
 
   return (
-    <Card className="max-w-xs">
+    <Card className="max-w-2xl">
         <CardHeader>
             <CardTitle>eBay CSV Download</CardTitle>
         </CardHeader>
