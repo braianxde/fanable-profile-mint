@@ -99,6 +99,9 @@ export default function Web3ERC721Interface() {
   return (
     <div className="min-h-screen bg-background p-4">
       <div className="h-full max-w-none space-y-3">
+        <div className="flex flex-col gap-4 items-end">
+          <EbayPurchaseHistory />
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Contract Configuration */}
           <ContractConfig
@@ -129,9 +132,6 @@ export default function Web3ERC721Interface() {
           onClearHistory={clearTransactionHistory}
           explorerUrl={epicChainNetwork.blockExplorerUrls[0]}
         />
-
-        {/* eBay Purchase History */}
-        <EbayPurchaseHistory />
       </div>
     </div>
   )

@@ -270,7 +270,7 @@ export function EbayPurchaseHistory() {
   }
 
   return (
-    <Card className="max-w-2xl">
+    <Card className="w-full max-w-xl">
         <CardHeader>
             <CardTitle>eBay CSV Download</CardTitle>
         </CardHeader>
@@ -278,17 +278,17 @@ export function EbayPurchaseHistory() {
                 <Button 
                     onClick={downloadCSV} 
                     disabled={isLoading}
-                    className="flex items-center gap-2 w-full"
+                    className="flex items-center gap-2 w-full h-12"
                 >
                     {isLoading ? (
                     <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Fetching & Downloading eBay Orders...
+                       LOADING...
                     </>
                     ) : (
                     <>
                         <Download className="h-4 w-4" />
-                        Fetch & Download eBay Orders CSV
+                        FETCH & DOWNLOAD
                     </>
                     )}
                 </Button>
