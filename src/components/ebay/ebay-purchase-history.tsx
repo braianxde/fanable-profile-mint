@@ -1,12 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Download, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
 
 interface EbayOrder {
   created: string
@@ -23,6 +23,12 @@ interface EbayOrder {
   carrier: string
   tracking: string
   orderUrl: string
+  ebayCategoryId?: string
+  ebayCategoryName?: string
+  fanableCategory?: string
+  itemDescription?: string
+  itemBrand?: string
+  itemSpecs?: string
 }
 
 interface TrackingData {
@@ -32,240 +38,158 @@ interface TrackingData {
 
 export function EbayPurchaseHistory() {
   const [isLoading, setIsLoading] = useState(false)
+  const [enableCategoryAnalysis, setEnableCategoryAnalysis] = useState<string>("true")
+  const [progress, setProgress] = useState<{
+    ordersFetched: number
+    itemsFetched: number
+    currentStep: string
+  }>({
+    ordersFetched: 0,
+    itemsFetched: 0,
+    currentStep: ""
+  })
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const jobIdRef = useRef<string | null>(null)
 
-  const parseXmlToJson = (xmlString: string): any => {
-    const parser = new DOMParser()
-    const xmlDoc = parser.parseFromString(xmlString, "text/xml")
-    
-    const xmlToObject = (element: Element): any => {
-      const result: any = {}
-      
-      // Handle attributes
-      if (element.attributes.length > 0) {
-        for (let i = 0; i < element.attributes.length; i++) {
-          const attr = element.attributes[i]
-          result[`@${attr.name}`] = attr.value
-        }
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
       }
+    }
+  }, [])
+
+  const pollJobStatus = async (jobId: string) => {
+    try {
+      const response = await fetch(`/api/ebay/job?jobId=${jobId}`)
       
-      // Handle child elements
-      if (element.children.length > 0) {
-        for (let i = 0; i < element.children.length; i++) {
-          const child = element.children[i]
-          const childName = child.tagName
-          const childValue = xmlToObject(child)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch job status: ${response.status}`)
+      }
+
+      const data = await response.json()
+
+      // Update progress
+      setProgress({
+        ordersFetched: data.ordersFetched || 0,
+        itemsFetched: data.itemsFetched || 0,
+        currentStep: data.step || ""
+      })
+
+      // Check if job is complete
+      if (data.status === 'completed') {
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current)
+          pollingIntervalRef.current = null
+        }
+
+        // Download CSV
+        if (data.csvContent) {
+          const blob = new Blob([data.csvContent], { type: "text/csv;charset=utf-8;" })
+          const link = document.createElement("a")
           
-          if (result[childName]) {
-            if (!Array.isArray(result[childName])) {
-              result[childName] = [result[childName]]
-            }
-            result[childName].push(childValue)
-          } else {
-            result[childName] = childValue
+          if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob)
+            link.setAttribute("href", url)
+            link.setAttribute("download", `ebay-orders-${new Date().toISOString().split('T')[0]}.csv`)
+            link.style.visibility = "hidden"
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            toast.success(`CSV file downloaded successfully with ${data.ordersFetched} orders`)
           }
         }
-      } else {
-        // Handle text content
-        const textContent = element.textContent?.trim()
-        if (textContent) {
-          result["#text"] = textContent
-        }
+
+        setIsLoading(false)
+        setProgress({
+          ordersFetched: 0,
+          itemsFetched: 0,
+          currentStep: ""
+        })
+        jobIdRef.current = null
+        return true // Job complete
       }
-      
-      return result
+
+      // Check if job failed
+      if (data.status === 'error') {
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current)
+          pollingIntervalRef.current = null
+        }
+        toast.error(`Error: ${data.error || 'Unknown error'}`)
+        setIsLoading(false)
+        setProgress({
+          ordersFetched: 0,
+          itemsFetched: 0,
+          currentStep: ""
+        })
+        jobIdRef.current = null
+        return true // Job complete (with error)
+      }
+
+      return false // Job still processing
+    } catch (error) {
+      console.error("Error polling job status:", error)
+      return false
     }
-    
-    return xmlToObject(xmlDoc.documentElement)
   }
 
   const downloadCSV = async () => {
     setIsLoading(true)
-    const allOrders: EbayOrder[] = []
-    const apiPayload: TrackingData[] = []
+    setProgress({
+      ordersFetched: 0,
+      itemsFetched: 0,
+      currentStep: "Starting..."
+    })
 
     try {
-      // Get date from 89 days ago
-      const yesterday = new Date()
-      yesterday.setDate(yesterday.getDate() - 89)
-      const formattedYesterday = yesterday.toISOString().split('T')[0]
-
-      let page = 1
-      let totalPages = 999
-
-      while (page <= totalPages) {
-        console.log(`Getting page ${page} starting ${formattedYesterday}`)
-
-        const response = await fetch("/api/ebay/orders", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            page,
-            daysBack: 89
-          })
+      // Start the job
+      const response = await fetch("/api/ebay/job", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ 
+          action: 'start',
+          enableCategoryAnalysis: enableCategoryAnalysis === "true"
         })
+      })
 
-        if (response.ok) {
-          const result = await response.json()
-          if (result.success && result.data) {
-            const xmlData = result.data
-            const jsonData = parseXmlToJson(xmlData)
-            
-            const tp = parseInt(jsonData.PaginationResult?.TotalNumberOfPages?.["#text"] || "1")
-            if (totalPages === 999) {
-              totalPages = tp
-              console.log(`... (total pages: ${totalPages})`)
-            }
-
-            const orders = jsonData.OrderArray?.Order || []
-            const orderArray = Array.isArray(orders) ? orders : [orders]
-
-            for (const o of orderArray) {
-              const oid = o.OrderID?.["#text"]
-              const status = o.OrderStatus?.["#text"]
-
-              // Only complete orders
-              if (status !== "Completed") {
-                console.log(" skipped", oid, status)
-                continue
-              }
-
-              const total = parseFloat(o.AmountPaid?.["#text"] || "0")
-              const totalCur = o.AmountPaid?.["@currencyID"] || "USD"
-
-              const shipping = parseFloat(o.ShippingServiceSelected?.ShippingServiceCost?.["#text"] || "0")
-              const shippingCur = o.ShippingServiceSelected?.ShippingServiceCost?.["@currencyID"] || "USD"
-
-              const created = o.CreatedTime?.["#text"]?.slice(0, 10) || ""
-
-              const trackings: TrackingData[] = []
-              const transactions = o.TransactionArray?.Transaction || []
-              const transactionArray = Array.isArray(transactions) ? transactions : [transactions]
-
-              for (const t of transactionArray) {
-                const itemId = t.Item?.ItemID?.["#text"] || ""
-                const title = t.Item?.Title?.["#text"] || ""
-                const itemPrice = parseFloat(t.TransactionPrice?.["#text"] || "0")
-                const itemCur = t.TransactionPrice?.["@currencyID"] || "USD"
-
-                if (!t.ShippingDetails) {
-                  break // not shipped yet!
-                }
-
-                let carrier = "OTHER"
-                let tracking = ""
-
-                if (t.ShippingDetails.ShipmentTrackingDetails) {
-                  const trackingDetails = t.ShippingDetails.ShipmentTrackingDetails
-                  const trackingArray = Array.isArray(trackingDetails) ? trackingDetails : [trackingDetails]
-
-                  for (const tr of trackingArray) {
-                    carrier = tr.ShippingCarrierUsed?.["#text"] || "OTHER"
-                    tracking = tr.ShipmentTrackingNumber?.["#text"] || ""
-
-                    const trackingData = { trackingId: tracking, carrier }
-                    
-                    if (!apiPayload.some(p => p.trackingId === tracking && p.carrier === carrier)) {
-                      apiPayload.push(trackingData)
-                    }
-                    if (!trackings.some(t => t.trackingId === tracking && t.carrier === carrier)) {
-                      trackings.push(trackingData)
-                    }
-                  }
-                }
-
-                const orderData: EbayOrder = {
-                  created,
-                  orderId: oid,
-                  status,
-                  totalCurrency: totalCur,
-                  total,
-                  shippingCurrency: shippingCur,
-                  shipping,
-                  itemId,
-                  title,
-                  itemCurrency: itemCur,
-                  itemPrice,
-                  carrier,
-                  tracking,
-                  orderUrl: `https://order.ebay.com/ord/show?orderId=${oid}`
-                }
-
-                allOrders.push(orderData)
-              }
-            }
-            page++
-          } else {
-            console.error("Invalid response format:", result)
-            toast.error("Invalid response from eBay API")
-            break
-          }
-        } else {
-          const errorResult = await response.json()
-          console.error(`API Error: ${response.status}`, errorResult)
-          toast.error(`API Error: ${response.status} - ${errorResult.error || 'Unknown error'}`)
-          break
-        }
+      if (!response.ok) {
+        throw new Error(`Failed to start job: ${response.status}`)
       }
 
-      // Generate CSV from fetched orders
-      const headers = [
-        "Created Date",
-        "Order ID", 
-        "Status",
-        "Total Currency",
-        "Total Amount",
-        "Shipping Currency", 
-        "Shipping Amount",
-        "Item ID",
-        "Item Title",
-        "Item Currency",
-        "Item Price",
-        "Carrier",
-        "Tracking Number",
-        "Order URL"
-      ]
+      const data = await response.json()
+      jobIdRef.current = data.jobId
 
-      const csvContent = [
-        headers.join(","),
-        ...allOrders.map(order => [
-          `"${order.created}"`,
-          `"${order.orderId}"`,
-          `"${order.status}"`,
-          `"${order.totalCurrency}"`,
-          order.total,
-          `"${order.shippingCurrency}"`,
-          order.shipping,
-          `"${order.itemId}"`,
-          `"${order.title.replace(/"/g, '""')}"`, // Escape quotes in title
-          `"${order.itemCurrency}"`,
-          order.itemPrice,
-          `"${order.carrier}"`,
-          `"${order.tracking}"`,
-          `"${order.orderUrl}"`
-        ].join(","))
-      ].join("\n")
-
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-      const link = document.createElement("a")
+      // Start polling immediately, then every 500ms
+      await pollJobStatus(data.jobId)
       
-      if (link.download !== undefined) {
-        const url = URL.createObjectURL(blob)
-        link.setAttribute("href", url)
-        link.setAttribute("download", `ebay-orders-${new Date().toISOString().split('T')[0]}.csv`)
-        link.style.visibility = "hidden"
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        toast.success(`CSV file downloaded successfully with ${allOrders.length} orders`)
-      }
+      pollingIntervalRef.current = setInterval(async () => {
+        if (jobIdRef.current) {
+          const isComplete = await pollJobStatus(jobIdRef.current)
+          if (isComplete && pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current)
+            pollingIntervalRef.current = null
+          }
+        }
+      }, 500) // Poll every 500ms
 
     } catch (error) {
-      console.error("Error fetching eBay data:", error)
-      toast.error("Failed to fetch eBay purchase history")
-    } finally {
+      console.error("Error starting job:", error)
+      toast.error("Failed to start download process")
       setIsLoading(false)
+      setProgress({
+        ordersFetched: 0,
+        itemsFetched: 0,
+        currentStep: ""
+      })
+      
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
     }
   }
 
@@ -274,7 +198,24 @@ export function EbayPurchaseHistory() {
         <CardHeader>
             <CardTitle>eBay CSV Download</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="category-analysis">Item Category Analysis</Label>
+                  <Select 
+                    value={enableCategoryAnalysis} 
+                    onValueChange={setEnableCategoryAnalysis}
+                    disabled={isLoading}
+                  >
+                    <SelectTrigger id="category-analysis" className="w-full">
+                      <SelectValue placeholder="Select option" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="true">Enabled</SelectItem>
+                      <SelectItem value="false">Disabled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
                 <Button 
                     onClick={downloadCSV} 
                     disabled={isLoading}
@@ -292,6 +233,28 @@ export function EbayPurchaseHistory() {
                     </>
                     )}
                 </Button>
+                
+                {isLoading && (
+                  <div className="space-y-2 text-sm">
+                    {progress.currentStep && (
+                      <div className="text-muted-foreground">
+                        {progress.currentStep}
+                      </div>
+                    )}
+                    {progress.ordersFetched > 0 && (
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Orders:</span>
+                        <span>{progress.ordersFetched}</span>
+                      </div>
+                    )}
+                    {progress.itemsFetched > 0 && (
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Items:</span>
+                        <span>{progress.itemsFetched}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
             
         </CardContent>
     </Card>
