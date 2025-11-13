@@ -1,4 +1,4 @@
-export type FanableCategory = "Trading Card" | "Comic" | "Others"
+export type FanableCategory = "Pokemon" | "Trading Card" | "Comic" | "Others"
 
 export function detectFanableCategory(
   title: string, 
@@ -21,56 +21,48 @@ export function detectFanableCategory(
   // Join and normalize to lowercase (preserves UTF-8 characters)
   const combinedText = textParts.join(' ').toLowerCase()
   
-  // Comic keywords - brands and specific keywords only (no grading companies, no character names)
+  // Pokemon keywords
+  const pokemonKeywords = [
+    "pokemon",
+    "pokémon",
+  ]
+  
+  // Comic keywords - general comic-related terms and indicators
   const comicKeywords = [
     "comic",
     "comics",
     "comic book",
-    "variant",
-    "cover",
-    "variant cover",
-    "marvel comics",
     "marvel",
-    "dc comics",
-    "dc comic",
-    "image comics",
   ]
   
-  // Trading Card keywords
+  // Trading Card keywords - general trading card terms (excluding Pokemon-specific terms)
   const tradingCardKeywords = [
     "trading card",
+    "trading cards",
     "tcg",
-    "trading card game",
     "card pack",
     "booster pack",
     "booster box",
-    "trading card pack",
-    "pokemon",
-    "Pokémon",
-    "yugioh",
-    "yu-gi-oh",
-    "magic the gathering",
-    "mtg",
-    "baseball card",
-    "basketball card",
-    "football card",
-    "hockey card",
     "sports card",
-    "collectible card",
-    "card game",
-    "trading card set",
-    "trading cards"
   ]
   
-  // Single search for comic keywords
-  const hasComicKeyword = comicKeywords.some(keyword => combinedText.includes(keyword))
+  // Check for Pokemon keywords
+  const hasPokemonKeyword = pokemonKeywords.some(keyword => combinedText.includes(keyword))
   
-  // Single search for trading card keywords
+  // Check for trading card keywords
   const hasTradingCardKeyword = tradingCardKeywords.some(keyword => combinedText.includes(keyword))
   
-  // Priority: Comic keywords take precedence
+  // Check for comic keywords
+  const hasComicKeyword = comicKeywords.some(keyword => combinedText.includes(keyword))
+  
+  // Priority: Comic > Pokemon > Trading Card
+  // Comics take priority because comic-specific indicators (like CGC, issue numbers) are strong signals
   if (hasComicKeyword) {
     return "Comic"
+  }
+  
+  if (hasPokemonKeyword) {
+    return "Pokemon"
   }
   
   if (hasTradingCardKeyword) {

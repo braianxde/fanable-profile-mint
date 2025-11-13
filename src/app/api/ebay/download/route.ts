@@ -29,6 +29,7 @@ const xmlParser = new XMLParser({
   attributeNamePrefix: "@",
   textNodeName: "#text",
   parseAttributeValue: false,
+  parseTagValue: false, // Prevent converting numeric strings to numbers
   trimValues: true,
   alwaysCreateTextNode: true,
   isArray: (name, jPath, isLeafNode, isAttribute) => {
@@ -133,7 +134,15 @@ export async function GET(request: NextRequest) {
                   itemCurrency: t.TransactionPrice?.["@currencyID"] || "USD",
                   itemPrice: parseFloat(t.TransactionPrice?.["#text"] || "0"),
                   carrier: t.ShippingDetails.ShipmentTrackingDetails?.[0]?.ShippingCarrierUsed?.["#text"] || "OTHER",
-                  tracking: t.ShippingDetails.ShipmentTrackingDetails?.[0]?.ShipmentTrackingNumber?.["#text"] || "",
+                  tracking: (() => {
+                    const trackingValue = t.ShippingDetails.ShipmentTrackingDetails?.[0]?.ShipmentTrackingNumber?.["#text"] || ""
+                    // Ensure tracking number is always a string to prevent scientific notation
+                    if (typeof trackingValue === 'number') {
+                      // If it's already a number, use toLocaleString to get full precision without scientific notation
+                      return trackingValue.toLocaleString('fullwide', { useGrouping: false, maximumFractionDigits: 0 })
+                    }
+                    return String(trackingValue)
+                  })(),
                   orderUrl: `https://order.ebay.com/ord/show?orderId=${o.OrderID?.["#text"]}`
                 }
 
@@ -243,7 +252,7 @@ export async function GET(request: NextRequest) {
             `"${order.shippingCurrency}"`, order.shipping,
             `"${order.itemId}"`, `"${order.title.replace(/"/g, '""')}"`,
             `"${order.itemCurrency}"`, order.itemPrice,
-            `"${order.carrier}"`, `"${order.tracking}"`,
+            `"${order.carrier}"`, order.tracking ? `"\t${order.tracking}"` : `""`,
             `"${order.orderUrl}"`, `"${order.fanableCategory || "Others"}"`
           ].join(","))
         ].join("\n")

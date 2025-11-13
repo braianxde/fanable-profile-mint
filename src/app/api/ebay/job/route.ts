@@ -142,6 +142,7 @@ async function processJob(jobId: string) {
       attributeNamePrefix: "@",
       textNodeName: "#text",
       parseAttributeValue: false,
+      parseTagValue: false, // Prevent converting numeric strings to numbers
       trimValues: true,
       alwaysCreateTextNode: true,
       isArray: (name) => {
@@ -247,7 +248,16 @@ async function processJob(jobId: string) {
               const trackingArray = Array.isArray(trackingDetails) ? trackingDetails : [trackingDetails]
               if (trackingArray.length > 0) {
                 carrier = trackingArray[0].ShippingCarrierUsed?.["#text"] || trackingArray[0].ShippingCarrierUsed || "OTHER"
-                tracking = trackingArray[0].ShipmentTrackingNumber?.["#text"] || trackingArray[0].ShipmentTrackingNumber || ""
+                const trackingValue = trackingArray[0].ShipmentTrackingNumber?.["#text"] || trackingArray[0].ShipmentTrackingNumber || ""
+                // Ensure tracking number is always a string to prevent scientific notation
+                // Convert to string and handle if it was already converted to a number
+                if (typeof trackingValue === 'number') {
+                  // If it's already a number, use toLocaleString to get full precision without scientific notation
+                  // Use 'fullwide' to avoid grouping and get the full number
+                  tracking = trackingValue.toLocaleString('fullwide', { useGrouping: false, maximumFractionDigits: 0 })
+                } else {
+                  tracking = String(trackingValue)
+                }
               }
             }
             
@@ -410,7 +420,7 @@ async function processJob(jobId: string) {
         `"${order.shippingCurrency}"`, order.shipping,
         `"${order.itemId}"`, `"${order.title.replace(/"/g, '""')}"`,
         `"${order.itemCurrency}"`, order.itemPrice,
-        `"${order.carrier}"`, `"${order.tracking}"`,
+        `"${order.carrier}"`, order.tracking ? `"\t${order.tracking}"` : `""`,
         `"${order.shipmentStatus || "Awaiting tracking"}"`,
         `"${order.orderUrl}"`, `"${order.fanableCategory || "Others"}"`
       ].join(","))
