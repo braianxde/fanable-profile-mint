@@ -43,16 +43,16 @@ const tokens: Tokens = {
                 process.env.NEXT_PUBLIC_EPIC_WALLET_ADDRESS || "",
         },
     },
-    [NetworkTypes.EPICCHAIN]: {
+    [NetworkTypes.BASE]: {
         /**
-         * ERN Token
+         * EPIC Token on Base
          */
         [TokenType.EPIC]: {
             id: 2,
-            name: process.env.NEXT_PUBLIC_EPIC_TOKEN_NAME_EPICCHAIN || "EPIC",
+            name: process.env.NEXT_PUBLIC_EPIC_TOKEN_NAME_BASE || "EPIC",
             symbol:
-                process.env.NEXT_PUBLIC_EPIC_TOKEN_SYMBOL_EPICCHAIN || "EPIC",
-            address: process.env.NEXT_PUBLIC_EPIC_TOKEN_ADDRESS_EPICCHAIN || "",
+                process.env.NEXT_PUBLIC_EPIC_TOKEN_SYMBOL_BASE || "EPIC",
+            address: process.env.NEXT_PUBLIC_EPIC_TOKEN_ADDRESS_BASE || "",
             image: "/tokens/epic.png",
             decimals: 18,
         },

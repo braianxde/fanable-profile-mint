@@ -27,13 +27,13 @@ export default function Web3ERC721Interface() {
   const [contractAddress, setContractAddress] = useState("0x239993F94E2C20dD8568a40b6D45Df5c3375cf02")
   const [transactions, setTransactions] = useState<Transaction[]>([])
 
-  // Epic Chain network configuration
-  const epicChainNetwork = {
-    chainId: "0xB7", // 183 in hex
-    chainName: "Epic Chain",
+  // Base Chain network configuration
+  const baseChainNetwork = {
+    chainId: "0x2105", // 8453 in hex
+    chainName: "Base",
     nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
-    rpcUrls: ["https://mainnet.ethernitychain.io/"],
-    blockExplorerUrls: ["https://explorer.epicchain.io"],
+    rpcUrls: ["https://mainnet.base.org"],
+    blockExplorerUrls: ["https://basescan.org"],
     requiredMintWallet: "0xB9d5c93ec9abA93180ddD00a628e8FAcc3103039",
     fanableProfilesWallet: "0xa63cce06Adc521ef91a2DB2153dD75d336Cd0004"
   }
@@ -104,7 +104,7 @@ export default function Web3ERC721Interface() {
           <ContractConfig
             contractAddress={contractAddress}
             onContractAddressChange={setContractAddress}
-            networkName={epicChainNetwork.chainName}
+            networkName={baseChainNetwork.chainName}
           />
 
           {/* Wallet Info */}
@@ -122,7 +122,7 @@ export default function Web3ERC721Interface() {
         {contractAddress && (
           <Erc721Interface
             contractAddress={contractAddress}
-            network={NetworkTypes.EPICCHAIN}
+            network={NetworkTypes.BASE}
             onTransactionComplete={handleTransactionComplete}
           />
         )}
@@ -131,7 +131,7 @@ export default function Web3ERC721Interface() {
         <TransactionHistory
           transactions={transactions}
           onClearHistory={clearTransactionHistory}
-          explorerUrl={epicChainNetwork.blockExplorerUrls[0]}
+          explorerUrl={baseChainNetwork.blockExplorerUrls[0]}
         />
       </div>
     </div>

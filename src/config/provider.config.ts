@@ -28,8 +28,8 @@ export class Provider {
      * @returns Network provider url
      */
     private static getProvider(network: NetworkTypes): NetworkProvider {
-        if (network === NetworkTypes.EPICCHAIN) {
-            return networkConfig.providers.epicchain;
+        if (network === NetworkTypes.BASE) {
+            return networkConfig.providers.base;
         } else {
             return networkConfig.providers.ethereum;
         }
@@ -43,7 +43,7 @@ export class Provider {
     private static async set(network: NetworkTypes) {
         const provider = Provider.getProvider(network);
 
-        if (network === NetworkTypes.EPICCHAIN) {
+        if (network === NetworkTypes.BASE) {
             Provider.provider[network] = new ethers.JsonRpcProvider(
                 provider.rpc
             );

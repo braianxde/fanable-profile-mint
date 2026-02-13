@@ -2,12 +2,12 @@ import { NetworkProvider } from "./provider.config";
 
 export type NetworkProviders = {
     ethereum: NetworkProvider;
-    epicchain: NetworkProvider;
+    base: NetworkProvider;
 };
 
 export enum NetworkTypes {
     ETHEREUM = "ethereum",
-    EPICCHAIN = "epicchain",
+    BASE = "base",
 }
 
 export type Network = {
@@ -48,29 +48,29 @@ export const network: Network = {
             image: "/chains/ethereum.svg",
         },
         /**
-         * Ethernity Http Provider
+         * Base Http Provider
          */
-        epicchain: {
+        base: {
             /**
-             * Epicchain Network Name
+             * Base Network Name
              */
             network:
-                process.env.NEXT_PUBLIC_EPICCHAIN_PROVIDER_NETWORK ||
-                "Epicchain Mainnet",
-            name: "Epicchain",
-            key: process.env.NEXT_PUBLIC_EPICCHAIN_PROVIDER_KEY || "ernscan",
+                process.env.NEXT_PUBLIC_BASE_PROVIDER_NETWORK ||
+                "Base Mainnet",
+            name: "Base",
+            key: process.env.NEXT_PUBLIC_BASE_PROVIDER_KEY || "",
             chainId: parseInt(
-                process.env.NEXT_PUBLIC_EPICCHAIN_CHAIN_ID || "183"
+                process.env.NEXT_PUBLIC_BASE_CHAIN_ID || "8453"
             ),
             chainIdHex:
                 "0x" +
                 parseInt(
-                    process.env.NEXT_PUBLIC_EPICCHAIN_CHAIN_ID || "183"
+                    process.env.NEXT_PUBLIC_BASE_CHAIN_ID || "8453"
                 ).toString(16),
             rpc:
-                process.env.NEXT_PUBLIC_EPICCHAIN_RPC_URL ||
-                "https://mainnet.ethernitychain.io",
-            image: "/chains/ethernity.svg",
+                process.env.NEXT_PUBLIC_BASE_RPC_URL ||
+                "https://mainnet.base.org",
+            image: "/chains/base.svg",
         },
     },
 };
