@@ -1,8 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Card, CardContent } from "@/components/ui/card"
 import { toast } from "sonner"
 import { DynamicEmbeddedWidget, DynamicWidget } from "@dynamic-labs/sdk-react-core"
 import { NetworkTypes } from "@/config/network.config"
@@ -24,7 +22,7 @@ interface Transaction {
 }
 
 export default function Web3ERC721Interface() {
-  const [contractAddress, setContractAddress] = useState("0x239993F94E2C20dD8568a40b6D45Df5c3375cf02")
+  const [contractAddress, setContractAddress] = useState("0xE62Ec6b2Aae2c51A70D85139f2480B93e2131fbe")
   const [transactions, setTransactions] = useState<Transaction[]>([])
 
   // Base Chain network configuration
